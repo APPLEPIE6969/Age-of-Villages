@@ -388,18 +388,28 @@ export class GameEngine {
   // --------------------------------------------------------------------------
   // FACTORY: create unit / building
   // --------------------------------------------------------------------------
-  createUnit(type: UnitType, team: Team, pos: THREE.Vector3): Unit | null {
+  createUnit(type: UnitType, team: Team, pos: THREE.Vector3, opts?: { skipCostCheck?: boolean }): Unit | null {
     const stats = UNIT_STATS[type];
     const player = this.players[team];
-    // Check pop cap & cost (only for player — AI is unlimited by cost but respects pop cap)
-    if (player.pop + stats.popCost > player.popCap) {
-      if (team === 'player') this.cb.onLog?.('Population cap reached. Build more houses.');
-      return null;
-    }
-    // Deduct resources if player (AI uses its own resource logic)
-    if (team === 'player' || team === 'enemy') {
+    // When spawning from a production queue, resources were already deducted
+    // at queue time — skip the cost check (but still enforce pop cap).
+    if (!opts?.skipCostCheck) {
+      if (player.pop + stats.popCost > player.popCap) {
+        if (team === 'player') this.cb.onLog?.('Population cap reached. Build more houses.');
+        return null;
+      }
+      // Deduct resources
       const r = player.resources;
       if ((stats.cost.wood || 0) > r.wood || (stats.cost.food || 0) > r.food || (stats.cost.gold || 0) > r.gold) {
+        return null;
+      }
+      r.wood -= stats.cost.wood || 0;
+      r.food -= stats.cost.food || 0;
+      r.gold -= stats.cost.gold || 0;
+    } else {
+      // Still enforce pop cap for queued units
+      if (player.pop + stats.popCost > player.popCap) {
+        if (team === 'player') this.cb.onLog?.('Population cap reached. Build more houses.');
         return null;
       }
     }
@@ -2091,17 +2101,33 @@ export class GameEngine {
         item.progress += dt / stats.buildTime;
         if (item.progress >= 1) {
           // Spawn unit near building
-          const spawnOffset = new THREE.Vector3(
-            (BUILDING_STATS[b.type].footprint[0] / 2 + 1.5) * TILE,
-            0,
-            0,
-          );
-          // Apply building rotation? Buildings don't rotate, spawn in front (+Z)
-          const angle = b.mesh.rotation.y;
-          const sx = b.pos.x + Math.sin(angle) * 0 + 0;
-          const sz = b.pos.z + (BUILDING_STATS[b.type].footprint[1] / 2 + 1.5) * TILE;
-          const sy = this.terrain.getHeightAt(sx, sz);
-          const unit = this.createUnit(item.unit, b.team, new THREE.Vector3(sx, sy, sz));
+          // Spawn unit in front of the building (+Z direction).
+          // Try multiple positions if the first is blocked/water.
+          const spawnDist = (BUILDING_STATS[b.type].footprint[1] / 2 + 1.5) * TILE;
+          let spawnPos: THREE.Vector3 | null = null;
+          const tryPositions: [number, number][] = [
+            [b.pos.x, b.pos.z + spawnDist],          // front
+            [b.pos.x + spawnDist, b.pos.z],           // right
+            [b.pos.x - spawnDist, b.pos.z],           // left
+            [b.pos.x, b.pos.z - spawnDist],           // back
+            [b.pos.x + spawnDist, b.pos.z + spawnDist], // front-right
+            [b.pos.x - spawnDist, b.pos.z + spawnDist], // front-left
+          ];
+          for (const [tx, tz] of tryPositions) {
+            if (!this.terrain.isWaterAt(tx, tz)) {
+              const [tcx, tcz] = this.pathfinder.worldToTile(tx, tz);
+              if (!this.pathfinder.isBlocked(tcx, tcz)) {
+                spawnPos = new THREE.Vector3(tx, this.terrain.getHeightAt(tx, tz), tz);
+                break;
+              }
+            }
+          }
+          if (!spawnPos) {
+            // Fallback: spawn directly at building center (will be pushed out by separation)
+            spawnPos = b.pos.clone();
+            spawnPos.y = this.terrain.getHeightAt(spawnPos.x, spawnPos.z);
+          }
+          const unit = this.createUnit(item.unit, b.team, spawnPos, { skipCostCheck: true });
           if (unit && b.rallyPoint) {
             unit.order = { kind: 'move', target: b.rallyPoint.clone() };
             this.pathTo(unit, b.rallyPoint);

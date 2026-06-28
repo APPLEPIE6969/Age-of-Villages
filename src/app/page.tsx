@@ -28,6 +28,22 @@ interface EnemyInfoState {
   popCap: number;
 }
 
+/** Short description of what each building does, shown in the hover tooltip */
+function buildingDescription(type: BuildingType): string {
+  switch (type) {
+    case 'town_center': return 'Trains villagers and drops off resources. Lose it and you lose the game.';
+    case 'house': return 'Increases your population cap by 5, allowing more units.';
+    case 'barracks': return 'Trains infantry units — swordsmen of increasing strength.';
+    case 'archery_range': return 'Trains ranged units — archers that attack from distance.';
+    case 'stable': return 'Trains cavalry — fast units that excel at flanking and raiding.';
+    case 'siege_workshop': return 'Trains siege weapons — battering rams that destroy buildings.';
+    case 'storage': return 'Drop-off point for gathered resources. Build near resource nodes.';
+    case 'tower': return 'Defensive structure that automatically attacks nearby enemies.';
+    case 'wall': return 'Blocks enemy movement. Cheap way to fortify your base.';
+    default: return '';
+  }
+}
+
 export default function Home() {
   const mountRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<GameEngine | null>(null);
@@ -53,6 +69,7 @@ export default function Home() {
   const [showBuildPanel, setShowBuildPanel] = useState(false);
   const [unitIcons, setUnitIcons] = useState<Record<string, string>>({});
   const [buildingIcons, setBuildingIcons] = useState<Record<string, string>>({});
+  const [hoveredButton, setHoveredButton] = useState<{ type: 'building' | 'unit'; key: string; x: number; y: number } | null>(null);
 
   // Detect mobile / small screen
   useEffect(() => {
@@ -340,7 +357,9 @@ export default function Home() {
         key={type}
         onClick={() => handleBuildClick(type)}
         disabled={disabled}
-        title={`${stats.label}\nCost: ${stats.cost.wood || 0}w ${stats.cost.food || 0}f ${stats.cost.gold || 0}g\nHP: ${stats.hp}\nRequires: ${AGE_INFO[stats.age].label}${stats.popProvided ? `\n+${stats.popProvided} pop` : ''}`}
+        onMouseEnter={(e) => !isMobile && setHoveredButton({ type: 'building', key: type, x: e.clientX, y: e.clientY })}
+        onMouseMove={(e) => !isMobile && setHoveredButton({ type: 'building', key: type, x: e.clientX, y: e.clientY })}
+        onMouseLeave={() => setHoveredButton(null)}
         style={{
           display: 'flex', flexDirection: 'column', alignItems: 'center',
           padding: isMobile ? '0.3rem 0.3rem' : '0.35rem 0.4rem',
@@ -353,6 +372,7 @@ export default function Home() {
           minHeight: isMobile ? '56px' : 'auto',
           fontSize: isMobile ? '9px' : '10px',
           opacity: disabled ? 0.5 : 1,
+          position: 'relative',
         }}
       >
         {buildingIcons[type] ? (
@@ -739,7 +759,9 @@ export default function Home() {
                 key={unit}
                 onClick={() => handleTrainClick(unit)}
                 disabled={disabled}
-                title={`${stats.label}\nCost: ${stats.cost.wood || 0}w ${stats.cost.food || 0}f ${stats.cost.gold || 0}g\nPop: ${stats.popCost}\nHP: ${stats.hp}  DMG: ${stats.damage}\nRequires: ${AGE_INFO[stats.age].label}`}
+                onMouseEnter={(e) => !isMobile && setHoveredButton({ type: 'unit', key: unit, x: e.clientX, y: e.clientY })}
+                onMouseMove={(e) => !isMobile && setHoveredButton({ type: 'unit', key: unit, x: e.clientX, y: e.clientY })}
+                onMouseLeave={() => setHoveredButton(null)}
                 style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'center',
                   padding: isMobile ? '0.3rem 0.3rem' : '0.35rem 0.4rem',
@@ -922,6 +944,105 @@ export default function Home() {
           >
             Got it
           </button>
+        </div>
+      )}
+
+      {/* === HOVER TOOLTIP for build/train buttons (desktop only) === */}
+      {hoveredButton && !isMobile && (
+        <div style={{
+          position: 'fixed',
+          left: Math.min(hoveredButton.x + 16, window.innerWidth - 280),
+          top: Math.min(hoveredButton.y + 16, window.innerHeight - 200),
+          background: 'rgba(15, 22, 32, 0.97)',
+          border: '2px solid #4f8cff',
+          borderRadius: '8px',
+          padding: '0.6rem 0.8rem',
+          color: '#e8eef5',
+          fontSize: '12px',
+          zIndex: 100,
+          pointerEvents: 'none',
+          maxWidth: '260px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+        }}>
+          {(() => {
+            if (hoveredButton.type === 'building') {
+              const stats = BUILDING_STATS[hoveredButton.key as BuildingType];
+              const icon = buildingIcons[hoveredButton.key];
+              return (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
+                    {icon && <img src={icon} alt={stats.label} style={{ width: 40, height: 40, objectFit: 'contain' }} />}
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '14px', color: '#88ccff' }}>{stats.label}</div>
+                      <div style={{ fontSize: '10px', color: '#9aa8b8' }}>{AGE_INFO[stats.age].label}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'auto auto', gap: '0.15rem 0.6rem', fontSize: '11px' }}>
+                    <span style={{ color: '#9aa8b8' }}>HP:</span><span style={{ color: '#88ff88' }}>{stats.hp}</span>
+                    <span style={{ color: '#9aa8b8' }}>Cost:</span>
+                    <span style={{ color: '#f5e6a8' }}>
+                      {stats.cost.wood ? `${stats.cost.wood}w ` : ''}
+                      {stats.cost.food ? `${stats.cost.food}f ` : ''}
+                      {stats.cost.gold ? `${stats.cost.gold}g` : ''}
+                    </span>
+                    {stats.popProvided > 0 && <>
+                      <span style={{ color: '#9aa8b8' }}>Pop:</span><span style={{ color: '#c39bd3' }}>+{stats.popProvided}</span>
+                    </>}
+                    {stats.attack && <>
+                      <span style={{ color: '#9aa8b8' }}>Attack:</span><span style={{ color: '#ff8866' }}>{stats.attack.damage} dmg (range {stats.attack.range})</span>
+                    </>}
+                    {stats.garrisonCapacity && <>
+                      <span style={{ color: '#9aa8b8' }}>Garrison:</span><span>{stats.garrisonCapacity}</span>
+                    </>}
+                  </div>
+                  {stats.produces && stats.produces.length > 0 && (
+                    <div style={{ marginTop: '0.4rem', paddingTop: '0.3rem', borderTop: '1px solid #2a3848' }}>
+                      <div style={{ fontSize: '10px', color: '#9aa8b8', marginBottom: '0.2rem' }}>Trains:</div>
+                      <div style={{ fontSize: '11px', color: '#9ad7ff' }}>
+                        {stats.produces.map(u => UNIT_STATS[u].label).join(', ')}
+                      </div>
+                    </div>
+                  )}
+                  <div style={{ marginTop: '0.3rem', fontSize: '10px', color: '#9aa8b8', fontStyle: 'italic' }}>
+                    {buildingDescription(stats.type)}
+                  </div>
+                </div>
+              );
+            } else {
+              const stats = UNIT_STATS[hoveredButton.key as UnitType];
+              const icon = unitIcons[hoveredButton.key];
+              return (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
+                    {icon && <img src={icon} alt={stats.label} style={{ width: 40, height: 40, objectFit: 'contain' }} />}
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '14px', color: '#88ccff' }}>{stats.label}</div>
+                      <div style={{ fontSize: '10px', color: '#9aa8b8' }}>{stats.category} · {AGE_INFO[stats.age].label}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'auto auto', gap: '0.15rem 0.6rem', fontSize: '11px' }}>
+                    <span style={{ color: '#9aa8b8' }}>HP:</span><span style={{ color: '#88ff88' }}>{stats.hp}</span>
+                    <span style={{ color: '#9aa8b8' }}>Damage:</span><span style={{ color: '#ff8866' }}>{stats.damage}{stats.projectile ? ' (ranged)' : ' (melee)'}</span>
+                    <span style={{ color: '#9aa8b8' }}>Range:</span><span>{stats.attackRange.toFixed(1)}</span>
+                    <span style={{ color: '#9aa8b8' }}>Speed:</span><span>{stats.moveSpeed.toFixed(1)}</span>
+                    <span style={{ color: '#9aa8b8' }}>Armor:</span><span>{stats.armor}</span>
+                    <span style={{ color: '#9aa8b8' }}>Pop:</span><span>{stats.popCost}</span>
+                    <span style={{ color: '#9aa8b8' }}>Cost:</span>
+                    <span style={{ color: '#f5e6a8' }}>
+                      {stats.cost.wood ? `${stats.cost.wood}w ` : ''}
+                      {stats.cost.food ? `${stats.cost.food}f ` : ''}
+                      {stats.cost.gold ? `${stats.cost.gold}g` : ''}
+                    </span>
+                  </div>
+                  {stats.bonusVs && Object.keys(stats.bonusVs).length > 0 && (
+                    <div style={{ marginTop: '0.3rem', fontSize: '10px', color: '#ffaa66' }}>
+                      Bonus vs: {Object.entries(stats.bonusVs).map(([k, v]) => `${k} x${v}`).join(', ')}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+          })()}
         </div>
       )}
 
