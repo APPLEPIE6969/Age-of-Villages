@@ -16,6 +16,7 @@ interface ResourcesState {
   wood: number;
   food: number;
   gold: number;
+  stone: number;
   pop: number;
   popCap: number;
   age: Age;
@@ -49,7 +50,7 @@ export default function Home() {
   const engineRef = useRef<GameEngine | null>(null);
   const [selection, setSelection] = useState<SelectionState>({ unitIds: [], buildingId: null });
   const [resources, setResources] = useState<ResourcesState>({
-    wood: 200, food: 200, gold: 100, pop: 0, popCap: 5, age: 'dark', advancing: null,
+    wood: 200, food: 200, gold: 100, stone: 100, pop: 0, popCap: 5, age: 'dark', advancing: null,
   });
   const [enemyInfo, setEnemyInfo] = useState<EnemyInfoState>({ age: 'dark', pop: 0, popCap: 5 });
   const [placingBuilding, setPlacingBuilding] = useState<BuildingType | null>(null);
@@ -124,6 +125,7 @@ export default function Home() {
           wood: player.resources.wood,
           food: player.resources.food,
           gold: player.resources.gold,
+          stone: player.resources.stone,
           pop: player.pop,
           popCap: player.popCap,
           age: player.age,
@@ -192,6 +194,7 @@ export default function Home() {
         wood: Math.floor(p.resources.wood),
         food: Math.floor(p.resources.food),
         gold: Math.floor(p.resources.gold),
+        stone: Math.floor(p.resources.stone),
         pop: p.pop,
         popCap: p.popCap,
         age: p.age,
@@ -296,6 +299,9 @@ export default function Home() {
       } else if (r.type === 'gold') {
         ctx.fillStyle = '#ffcc33';
         ctx.fillRect(toMx(r.x) - 1, toMz(r.z) - 1, 3, 3);
+      } else if (r.type === 'stone') {
+        ctx.fillStyle = '#bdc3c7';
+        ctx.fillRect(toMx(r.x) - 1, toMz(r.z) - 1, 3, 3);
       } else {
         ctx.fillStyle = '#c0392b';
         ctx.fillRect(toMx(r.x) - 1, toMz(r.z) - 1, 2, 2);
@@ -348,7 +354,8 @@ export default function Home() {
     const canAfford =
       (stats.cost.wood || 0) <= resources.wood &&
       (stats.cost.food || 0) <= resources.food &&
-      (stats.cost.gold || 0) <= resources.gold;
+      (stats.cost.gold || 0) <= resources.gold &&
+      (stats.cost.stone || 0) <= resources.stone;
     const ageOk = AGE_ORDER.indexOf(stats.age) <= AGE_ORDER.indexOf(resources.age);
     const disabled = !canAfford || !ageOk;
     const isPlacing = placingBuilding === type;
@@ -393,7 +400,8 @@ export default function Home() {
         <div style={{ fontSize: '9px', marginTop: '0.1rem', color: '#9ad7ff', fontWeight: 600 }}>
           {stats.cost.wood ? `${stats.cost.wood}w ` : ''}
           {stats.cost.food ? `${stats.cost.food}f ` : ''}
-          {stats.cost.gold ? `${stats.cost.gold}g` : ''}
+          {stats.cost.gold ? `${stats.cost.gold}g ` : ''}
+          {stats.cost.stone ? `${stats.cost.stone}s` : ''}
         </div>
         {stats.popProvided > 0 && (
           <div style={{ fontSize: '8px', color: '#c39bd3', marginTop: '0.05rem' }}>
@@ -468,6 +476,10 @@ export default function Home() {
           <span>{isMobile ? '' : 'Gold: '}{resources.gold}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}>
+          <span style={{ color: '#bdc3c7' }}>&#9831;</span>
+          <span>{isMobile ? '' : 'Stone: '}{resources.stone}</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}>
           <span style={{ color: '#9b59b6' }}>&#9794;</span>
           <span>{resources.pop}/{resources.popCap}</span>
         </div>
@@ -507,9 +519,9 @@ export default function Home() {
               cursor: 'pointer',
               fontSize: '12px',
             }}
-            title={`Cost: ${nextAgeInfo.advanceCost.food || 0} food, ${nextAgeInfo.advanceCost.gold || 0} gold`}
+            title={`Cost: ${nextAgeInfo.advanceCost.food || 0} food, ${nextAgeInfo.advanceCost.gold || 0} gold${nextAgeInfo.advanceCost.stone ? `, ${nextAgeInfo.advanceCost.stone} stone` : ''}`}
           >
-            Advance to {nextAgeInfo.label} ({nextAgeInfo.advanceCost.food || 0}f{nextAgeInfo.advanceCost.gold ? `, ${nextAgeInfo.advanceCost.gold}g` : ''})
+            Advance to {nextAgeInfo.label} ({nextAgeInfo.advanceCost.food || 0}f{nextAgeInfo.advanceCost.gold ? `, ${nextAgeInfo.advanceCost.gold}g` : ''}{nextAgeInfo.advanceCost.stone ? `, ${nextAgeInfo.advanceCost.stone}s` : ''})
           </button>
         ) : null}
         <button
@@ -751,7 +763,8 @@ export default function Home() {
             const canAfford =
               (stats.cost.wood || 0) <= resources.wood &&
               (stats.cost.food || 0) <= resources.food &&
-              (stats.cost.gold || 0) <= resources.gold;
+              (stats.cost.gold || 0) <= resources.gold &&
+              (stats.cost.stone || 0) <= resources.stone;
             const popOk = resources.pop + stats.popCost <= resources.popCap;
             const disabled = !ageOk || !canAfford || !popOk;
             return (
@@ -794,7 +807,8 @@ export default function Home() {
                 <div style={{ fontSize: '9px', marginTop: '0.1rem', color: '#9ad7ff', fontWeight: 600 }}>
                   {stats.cost.wood ? `${stats.cost.wood}w ` : ''}
                   {stats.cost.food ? `${stats.cost.food}f ` : ''}
-                  {stats.cost.gold ? `${stats.cost.gold}g` : ''}
+                  {stats.cost.gold ? `${stats.cost.gold}g ` : ''}
+                  {stats.cost.stone ? `${stats.cost.stone}s` : ''}
                 </div>
               </button>
             );

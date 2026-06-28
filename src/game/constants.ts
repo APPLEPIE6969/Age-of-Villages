@@ -8,12 +8,13 @@ export const MAP_SIZE = MAP_TILES * TILE; // 360 world units across
 export const TILE_RES = 4; // terrain geometry segments per tile (for height detail)
 
 // ---- Resources -------------------------------------------------------------
-export type ResourceType = 'wood' | 'food' | 'gold';
+export type ResourceType = 'wood' | 'food' | 'gold' | 'stone';
 
 export interface ResourceCost {
   wood?: number;
   food?: number;
   gold?: number;
+  stone?: number;
 }
 
 // ---- Ages ------------------------------------------------------------------
@@ -26,10 +27,10 @@ export const AGE_INFO: Record<Age, {
   advanceTime: number; // seconds
   color: string;
 }> = {
-  dark:     { label: 'Dark Age',     advanceCost: { food: 400 },                advanceTime: 30, color: '#8b6f47' },
-  feudal:   { label: 'Feudal Age',   advanceCost: { food: 800,  gold: 200 },    advanceTime: 45, color: '#b8995c' },
-  castle:   { label: 'Castle Age',   advanceCost: { food: 1200, gold: 600 },    advanceTime: 60, color: '#d4af37' },
-  imperial: { label: 'Imperial Age', advanceCost: { food: 1800, gold: 1000 },   advanceTime: 90, color: '#f5e6a8' },
+  dark:     { label: 'Dark Age',     advanceCost: { food: 400 },                              advanceTime: 30, color: '#8b6f47' },
+  feudal:   { label: 'Feudal Age',   advanceCost: { food: 800,  gold: 200 },                    advanceTime: 45, color: '#b8995c' },
+  castle:   { label: 'Castle Age',   advanceCost: { food: 1000, gold: 500,  stone: 200 },       advanceTime: 60, color: '#d4af37' },
+  imperial: { label: 'Imperial Age', advanceCost: { food: 1500, gold: 800,  stone: 400 },       advanceTime: 90, color: '#f5e6a8' },
 };
 
 // ---- Units -----------------------------------------------------------------
@@ -204,14 +205,14 @@ export const BUILDING_STATS: Record<BuildingType, BuildingStats> = {
   },
   tower: {
     type: 'tower', label: 'Watch Tower', hp: 1000,
-    cost: { wood: 50, gold: 25 }, buildTime: 20, popProvided: 0,
+    cost: { wood: 50, stone: 125 }, buildTime: 20, popProvided: 0,
     footprint: [1, 1], age: 'feudal',
     garrisonCapacity: 5,
     attack: { damage: 10, range: 14, speed: 1.8 },
   },
   wall: {
     type: 'wall', label: 'Wall', hp: 1500,
-    cost: { wood: 5 }, buildTime: 4, popProvided: 0,
+    cost: { stone: 5 }, buildTime: 4, popProvided: 0,
     footprint: [1, 1], age: 'feudal',
   },
 };
@@ -225,12 +226,14 @@ export const RESOURCE_AMOUNTS = {
   tree: 100,
   gold_ore: 800,
   berry_bush: 200,
+  stone_rock: 600,
 } as const;
 
 export const GATHER_RATES = {
   wood: 0.7,    // per sec
   food: 0.6,
   gold: 0.5,
+  stone: 0.45,
 } as const;
 
 export const VILLAGER_CARRY = 10; // max carry before deposit

@@ -706,3 +706,40 @@ export function buildBerryBushMesh(): THREE.Group {
   g.userData.resourceType = 'food';
   return g;
 }
+
+export function buildStoneRockMesh(): THREE.Group {
+  const tex = getTextures();
+  const g = new THREE.Group();
+  const stoneMat = standardMat({
+    map: tex.rock.map, normalMap: tex.rock.normalMap,
+    roughnessMap: tex.rock.roughnessMap, roughness: 0.9, color: 0x8a8a8a,
+  });
+  // Grey rocky mound — bigger and greyer than gold ore
+  for (let i = 0; i < 7; i++) {
+    const r = 0.6 + Math.random() * 0.5;
+    const m = new THREE.Mesh(sphGeo(r, 6), stoneMat);
+    m.position.set((Math.random() - 0.5) * 1.8, r * 0.45, (Math.random() - 0.5) * 1.8);
+    m.scale.y = 0.6 + Math.random() * 0.3;
+    m.rotation.set(Math.random() * 0.5, Math.random() * Math.PI, Math.random() * 0.5);
+    m.castShadow = true; m.receiveShadow = true;
+    g.add(m);
+  }
+  // A few lighter-colored stone chunks on top
+  const lightStoneMat = standardMat({
+    map: tex.rock.map, normalMap: tex.rock.normalMap,
+    roughnessMap: tex.rock.roughnessMap, roughness: 0.85, color: 0xb0b0b0,
+  });
+  for (let i = 0; i < 4; i++) {
+    const m = new THREE.Mesh(sphGeo(0.2 + Math.random() * 0.2, 5), lightStoneMat);
+    m.position.set(
+      (Math.random() - 0.5) * 1.2,
+      0.5 + Math.random() * 0.5,
+      (Math.random() - 0.5) * 1.2,
+    );
+    m.castShadow = true;
+    g.add(m);
+  }
+  g.userData.isResource = true;
+  g.userData.resourceType = 'stone';
+  return g;
+}

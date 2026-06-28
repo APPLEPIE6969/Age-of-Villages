@@ -11,7 +11,7 @@ import {
 } from './constants';
 import { buildTerrain, TerrainData } from './terrain';
 import {
-  buildUnitMesh, buildBuildingMesh, buildTreeMesh, buildGoldOreMesh, buildBerryBushMesh,
+  buildUnitMesh, buildBuildingMesh, buildTreeMesh, buildGoldOreMesh, buildBerryBushMesh, buildStoneRockMesh,
 } from './models';
 import { CameraRig } from './camera';
 import { Pathfinder } from './pathfinding';
@@ -132,7 +132,7 @@ export class GameEngine {
     this.players = {
       player: {
         team: 'player',
-        resources: { wood: 200, food: 200, gold: 100 },
+        resources: { wood: 200, food: 200, gold: 100, stone: 100 },
         pop: 0,
         popCap: BASE_POP_CAP,
         age: 'dark',
@@ -141,7 +141,7 @@ export class GameEngine {
       },
       enemy: {
         team: 'enemy',
-        resources: { wood: 200, food: 200, gold: 100 },
+        resources: { wood: 200, food: 200, gold: 100, stone: 100 },
         pop: 0,
         popCap: BASE_POP_CAP,
         age: 'dark',
@@ -300,7 +300,7 @@ export class GameEngine {
       }
     });
 
-    // Gold ore: ~6 deposits scattered, away from spawn corners
+    // Gold ore: ~8 deposits scattered, away from spawn corners
     for (let i = 0; i < 8; i++) {
       const u = 0.1 + Math.random() * 0.8;
       const v = 0.1 + Math.random() * 0.8;
@@ -318,6 +318,29 @@ export class GameEngine {
         mesh, pos: new THREE.Vector3(x, y, z), alive: true,
       });
       // Block a 2x2 area
+      const [tx, tz] = this.pathfinder.worldToTile(x, z);
+      for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+        this.pathfinder.setBlocked(tx + dx, tz + dz, true);
+      }
+    }
+
+    // Stone deposits: ~10 scattered rock formations
+    for (let i = 0; i < 10; i++) {
+      const u = 0.1 + Math.random() * 0.8;
+      const v = 0.1 + Math.random() * 0.8;
+      const x = u * MAP_SIZE - half;
+      const z = v * MAP_SIZE - half;
+      const y = this.terrain.getHeightAt(x, z);
+      if (this.terrain.isWaterAt(x, z)) continue;
+      if (this.resourceAt(x, z, 4)) continue;
+      const mesh = buildStoneRockMesh();
+      mesh.position.set(x, y, z);
+      this.scene.add(mesh);
+      const id = this.nextId++;
+      this.resources.set(id, {
+        id, type: 'stone', amount: RESOURCE_AMOUNTS.stone_rock, maxAmount: RESOURCE_AMOUNTS.stone_rock,
+        mesh, pos: new THREE.Vector3(x, y, z), alive: true,
+      });
       const [tx, tz] = this.pathfinder.worldToTile(x, z);
       for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
         this.pathfinder.setBlocked(tx + dx, tz + dz, true);
@@ -400,12 +423,13 @@ export class GameEngine {
       }
       // Deduct resources
       const r = player.resources;
-      if ((stats.cost.wood || 0) > r.wood || (stats.cost.food || 0) > r.food || (stats.cost.gold || 0) > r.gold) {
+      if ((stats.cost.wood || 0) > r.wood || (stats.cost.food || 0) > r.food || (stats.cost.gold || 0) > r.gold || (stats.cost.stone || 0) > r.stone) {
         return null;
       }
       r.wood -= stats.cost.wood || 0;
       r.food -= stats.cost.food || 0;
       r.gold -= stats.cost.gold || 0;
+      r.stone -= stats.cost.stone || 0;
     } else {
       // Still enforce pop cap for queued units
       if (player.pop + stats.popCost > player.popCap) {
@@ -464,9 +488,11 @@ export class GameEngine {
     if ((stats.cost.wood || 0) > r.wood) return false;
     if ((stats.cost.food || 0) > r.food) return false;
     if ((stats.cost.gold || 0) > r.gold) return false;
+    if ((stats.cost.stone || 0) > r.stone) return false;
     r.wood -= stats.cost.wood || 0;
     r.food -= stats.cost.food || 0;
     r.gold -= stats.cost.gold || 0;
+    r.stone -= stats.cost.stone || 0;
     return true;
   }
 
@@ -477,6 +503,7 @@ export class GameEngine {
     r.wood += stats.cost.wood || 0;
     r.food += stats.cost.food || 0;
     r.gold += stats.cost.gold || 0;
+    r.stone += stats.cost.stone || 0;
   }
 
   createBuilding(
@@ -1392,7 +1419,7 @@ export class GameEngine {
     const stats = BUILDING_STATS[type];
     const player = this.players.player;
     const r = player.resources;
-    if ((stats.cost.wood || 0) > r.wood || (stats.cost.food || 0) > r.food || (stats.cost.gold || 0) > r.gold) {
+    if ((stats.cost.wood || 0) > r.wood || (stats.cost.food || 0) > r.food || (stats.cost.gold || 0) > r.gold || (stats.cost.stone || 0) > r.stone) {
       this.cb.onLog?.(`Not enough resources for ${stats.label}.`);
       return;
     }
@@ -1488,6 +1515,7 @@ export class GameEngine {
     r.wood -= stats.cost.wood || 0;
     r.food -= stats.cost.food || 0;
     r.gold -= stats.cost.gold || 0;
+    r.stone -= stats.cost.stone || 0;
     const y = this.terrain.getHeightAt(pos.x, pos.z);
     const finalPos = new THREE.Vector3(pos.x, y, pos.z);
     const b = this.createBuilding(type, 'player', finalPos, true);
@@ -1566,12 +1594,13 @@ export class GameEngine {
     const nextAge = AGE_ORDER[idx + 1];
     const info = AGE_INFO[nextAge];
     const r = player.resources;
-    if ((info.advanceCost.food || 0) > r.food || (info.advanceCost.gold || 0) > r.gold) {
+    if ((info.advanceCost.food || 0) > r.food || (info.advanceCost.gold || 0) > r.gold || (info.advanceCost.stone || 0) > r.stone) {
       this.cb.onLog?.(`Not enough resources to advance to ${info.label}.`);
       return;
     }
     r.food -= info.advanceCost.food || 0;
     r.gold -= info.advanceCost.gold || 0;
+    r.stone -= info.advanceCost.stone || 0;
     player.advancing = {
       from: player.age,
       to: nextAge,
@@ -2256,44 +2285,102 @@ export class GameEngine {
   private updateAI(dt: number) {
     const ai = this.aiState;
     const enemy = this.players.enemy;
-    // AI economy: always try to keep villagers gathering, train more villagers
+    // AI economy: run more frequently for faster reaction
     ai.nextBuildTimer -= dt;
     if (ai.nextBuildTimer <= 0) {
-      ai.nextBuildTimer = 8;
+      ai.nextBuildTimer = 5; // faster ticks (was 8)
       this.aiEconomyTick();
     }
-    // Wave timer
+    // Wave timer — adaptive based on age
     ai.nextWaveTimer -= dt;
     if (ai.nextWaveTimer <= 0) {
-      ai.nextWaveTimer = 75; // waves every 75s
+      // Waves come faster in later ages
+      const ageIdx = AGE_ORDER.indexOf(enemy.age);
+      ai.nextWaveTimer = ageIdx >= 2 ? 55 : ageIdx >= 1 ? 70 : 90;
       this.aiLaunchWave();
     }
-    // Age advancement
+    // Age advancement — be more aggressive about advancing
     if (!enemy.advancing) {
       const idx = AGE_ORDER.indexOf(enemy.age);
       if (idx < AGE_ORDER.length - 1) {
         const nextAge = AGE_ORDER[idx + 1];
         const info = AGE_INFO[nextAge];
         const r = enemy.resources;
-        if ((info.advanceCost.food || 0) <= r.food && (info.advanceCost.gold || 0) <= r.gold) {
+        // Advance as soon as affordable, plus a small buffer
+        const buffer = idx === 0 ? 0 : 50;
+        if ((info.advanceCost.food || 0) + buffer <= r.food &&
+            (info.advanceCost.gold || 0) <= r.gold &&
+            (info.advanceCost.stone || 0) <= r.stone) {
           r.food -= info.advanceCost.food || 0;
           r.gold -= info.advanceCost.gold || 0;
+          r.stone -= info.advanceCost.stone || 0;
           enemy.advancing = {
             from: enemy.age, to: nextAge, progress: 0, total: info.advanceTime,
           };
         }
       }
     }
-    // Assign idle enemy villagers to gather
+    // Assign idle enemy villagers to gather — prioritize based on what's needed
+    this.aiAssignVillagers();
+    // Defensive: if player units are near enemy base, respond
+    this.aiDefensiveResponse();
+  }
+
+  /** Assign idle villagers to gather, prioritizing resources the AI needs */
+  private aiAssignVillagers() {
+    const enemy = this.players.enemy;
+    const r = enemy.resources;
+    // Determine what resource is most needed
+    const needs: { type: ResourceType; priority: number }[] = [];
+    // Food is always needed for villagers and age advancement
+    needs.push({ type: 'food', priority: r.food < 200 ? 3 : 1 });
+    // Wood for buildings
+    needs.push({ type: 'wood', priority: r.wood < 150 ? 2.5 : 1 });
+    // Gold for military and age advancement
+    needs.push({ type: 'gold', priority: r.gold < 100 ? 2 : 1 });
+    // Stone for towers/walls/age advancement (later ages)
+    if (AGE_ORDER.indexOf(enemy.age) >= 1) {
+      needs.push({ type: 'stone', priority: r.stone < 100 ? 2 : 0.5 });
+    }
+    needs.sort((a, b) => b.priority - a.priority);
+
     for (const u of this.units.values()) {
       if (u.team !== 'enemy' || u.type !== 'villager' || !u.alive) continue;
       if (u.order.kind === 'idle') {
-        const res = this.findNearestResource(u.pos, 'wood', 60) ||
-                    this.findNearestResource(u.pos, 'food', 60) ||
-                    this.findNearestResource(u.pos, 'gold', 60);
-        if (res) {
-          u.order = { kind: 'gather', resourceId: res.id, phase: 'toResource', resourceType: res.type };
-          this.pathTo(u, res.pos);
+        // Try resources in priority order
+        for (const need of needs) {
+          const res = this.findNearestResource(u.pos, need.type, 80);
+          if (res) {
+            u.order = { kind: 'gather', resourceId: res.id, phase: 'toResource', resourceType: res.type };
+            this.pathTo(u, res.pos);
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  /** Defensive response — if player attacks, pull military back to defend */
+  private aiDefensiveResponse() {
+    const enemyBuildings = [...this.buildings.values()].filter(b => b.team === 'enemy');
+    if (enemyBuildings.length === 0) return;
+    // Find enemy military units that are idle (not already attacking)
+    const idleMilitary = [...this.units.values()].filter(
+      u => u.team === 'enemy' && u.alive && u.type !== 'villager' &&
+           (u.order.kind === 'idle' || u.order.kind === 'move')
+    );
+    if (idleMilitary.length === 0) return;
+    // Check if any player units are near enemy buildings
+    for (const playerUnit of this.units.values()) {
+      if (playerUnit.team !== 'player' || !playerUnit.alive) continue;
+      for (const b of enemyBuildings) {
+        const dist = playerUnit.pos.distanceTo(b.pos);
+        if (dist < 25) {
+          // Player unit is attacking! Send idle military to defend
+          for (const defender of idleMilitary) {
+            defender.order = { kind: 'attack', targetId: playerUnit.id };
+          }
+          return;
         }
       }
     }
@@ -2302,33 +2389,53 @@ export class GameEngine {
   private aiEconomyTick() {
     const enemy = this.players.enemy;
     const r = enemy.resources;
-    // Train villagers if pop allows
+    // Train villagers aggressively — target scales with age
     const enemyTCs = [...this.buildings.values()].filter(b => b.team === 'enemy' && b.type === 'town_center' && !b.underConstruction);
     const villagerCount = [...this.units.values()].filter(u => u.team === 'enemy' && u.type === 'villager').length;
-    if (villagerCount < 20 && enemyTCs.length > 0) {
-      const tc = enemyTCs[0];
-      const cost = UNIT_STATS.villager.cost;
-      if ((cost.food || 0) <= r.food && enemy.pop + 1 <= enemy.popCap) {
-        r.food -= cost.food || 0;
-        tc.queue.push({ unit: 'villager', progress: 0, cost: UNIT_STATS.villager.cost });
+    const targetVillagers = AGE_ORDER.indexOf(enemy.age) >= 2 ? 30 : AGE_ORDER.indexOf(enemy.age) >= 1 ? 22 : 15;
+    if (villagerCount < targetVillagers && enemyTCs.length > 0) {
+      // Train from all TCs, not just the first
+      for (const tc of enemyTCs) {
+        if (tc.queue.length >= 2) continue; // don't overload one TC
+        const cost = UNIT_STATS.villager.cost;
+        if ((cost.food || 0) <= r.food && enemy.pop + 1 <= enemy.popCap) {
+          r.food -= cost.food || 0;
+          tc.queue.push({ unit: 'villager', progress: 0, cost: UNIT_STATS.villager.cost });
+          break; // one at a time per tick
+        }
       }
     }
-    // Build houses when pop close to cap
-    if (enemy.popCap - enemy.pop < 4 && enemy.popCap < HARD_POP_CAP) {
+    // Build houses proactively (before hitting cap)
+    if (enemy.popCap - enemy.pop < 6 && enemy.popCap < HARD_POP_CAP) {
       this.aiBuildBuilding('house');
     }
-    // Build military buildings based on age
-    const hasBarracks = [...this.buildings.values()].some(b => b.team === 'enemy' && b.type === 'barracks');
-    if (!hasBarracks) this.aiBuildBuilding('barracks');
+    // Build military buildings based on age — build multiple barracks for faster production
+    const barracksCount = [...this.buildings.values()].filter(b => b.team === 'enemy' && b.type === 'barracks' && !b.underConstruction).length;
+    if (barracksCount === 0) this.aiBuildBuilding('barracks');
+    else if (barracksCount < 2 && AGE_ORDER.indexOf(enemy.age) >= 1) this.aiBuildBuilding('barracks');
+
     if (enemy.age !== 'dark') {
-      const hasArchery = [...this.buildings.values()].some(b => b.team === 'enemy' && b.type === 'archery_range');
-      const hasStable = [...this.buildings.values()].some(b => b.team === 'enemy' && b.type === 'stable');
-      if (!hasArchery) this.aiBuildBuilding('archery_range');
-      if (!hasStable) this.aiBuildBuilding('stable');
+      const archeryCount = [...this.buildings.values()].filter(b => b.team === 'enemy' && b.type === 'archery_range' && !b.underConstruction).length;
+      const stableCount = [...this.buildings.values()].filter(b => b.team === 'enemy' && b.type === 'stable' && !b.underConstruction).length;
+      if (archeryCount === 0) this.aiBuildBuilding('archery_range');
+      if (stableCount === 0) this.aiBuildBuilding('stable');
+      // Build a second military building in castle age for faster production
+      if (AGE_ORDER.indexOf(enemy.age) >= 2) {
+        if (archeryCount < 2) this.aiBuildBuilding('archery_range');
+        if (stableCount < 2) this.aiBuildBuilding('stable');
+      }
     }
     if (enemy.age === 'castle' || enemy.age === 'imperial') {
       const hasSiege = [...this.buildings.values()].some(b => b.team === 'enemy' && b.type === 'siege_workshop');
       if (!hasSiege) this.aiBuildBuilding('siege_workshop');
+    }
+    // Build towers near resource nodes in later ages for defense
+    if (AGE_ORDER.indexOf(enemy.age) >= 1) {
+      const towerCount = [...this.buildings.values()].filter(b => b.team === 'enemy' && b.type === 'tower' && !b.underConstruction).length;
+      const maxTowers = AGE_ORDER.indexOf(enemy.age) >= 2 ? 4 : 2;
+      if (towerCount < maxTowers && r.stone >= 125) {
+        this.aiBuildBuilding('tower');
+      }
     }
     // Train military
     this.aiTrainMilitary();
@@ -2339,6 +2446,9 @@ export class GameEngine {
     const r = enemy.resources;
     const stats = BUILDING_STATS[type];
     if ((stats.cost.wood || 0) > r.wood) return;
+    if ((stats.cost.food || 0) > r.food) return;
+    if ((stats.cost.gold || 0) > r.gold) return;
+    if ((stats.cost.stone || 0) > r.stone) return;
     if (AGE_ORDER.indexOf(enemy.age) < AGE_ORDER.indexOf(stats.age)) return;
     // Find a free spot near an enemy TC
     const tc = [...this.buildings.values()].find(b => b.team === 'enemy' && b.type === 'town_center');
@@ -2353,6 +2463,7 @@ export class GameEngine {
           r.wood -= stats.cost.wood || 0;
           r.food -= stats.cost.food || 0;
           r.gold -= stats.cost.gold || 0;
+          r.stone -= stats.cost.stone || 0;
           const y = this.terrain.getHeightAt(x, z);
           const b = this.createBuilding(type, 'enemy', new THREE.Vector3(x, y, z), true);
           this.blockBuildingFootprint(b);
@@ -2377,6 +2488,13 @@ export class GameEngine {
     const militaryBuildings = [...this.buildings.values()].filter(
       b => b.team === 'enemy' && !b.underConstruction && BUILDING_STATS[b.type].produces
     );
+    // Count current army composition
+    const army = [...this.units.values()].filter(u => u.team === 'enemy' && u.alive && u.type !== 'villager' && u.type !== 'scout');
+    const infantryCount = army.filter(u => UNIT_STATS[u.type].category === 'infantry').length;
+    const archerCount = army.filter(u => UNIT_STATS[u.type].category === 'archer').length;
+    const cavalryCount = army.filter(u => UNIT_STATS[u.type].category === 'cavalry').length;
+    const siegeCount = army.filter(u => UNIT_STATS[u.type].category === 'siege').length;
+
     for (const b of militaryBuildings) {
       if (b.queue.length >= 2) continue;
       const produces = BUILDING_STATS[b.type].produces!;
@@ -2384,13 +2502,22 @@ export class GameEngine {
       const candidates = produces.filter(t => AGE_ORDER.indexOf(UNIT_STATS[t].age) <= AGE_ORDER.indexOf(enemy.age));
       // Prefer higher-tier units
       candidates.sort((a, b) => AGE_ORDER.indexOf(UNIT_STATS[b].age) - AGE_ORDER.indexOf(UNIT_STATS[a].age));
+
       for (const t of candidates) {
         const cost = UNIT_STATS[t].cost;
-        if ((cost.wood || 0) <= r.wood && (cost.food || 0) <= r.food && (cost.gold || 0) <= r.gold &&
+        // Include stone in the cost check
+        if ((cost.wood || 0) <= r.wood && (cost.food || 0) <= r.food && (cost.gold || 0) <= r.gold && (cost.stone || 0) <= r.stone &&
             enemy.pop + UNIT_STATS[t].popCost <= enemy.popCap) {
+          // Limit siege units — don't overproduce
+          if (UNIT_STATS[t].category === 'siege' && siegeCount >= 3) continue;
+          // Balance the army: don't overproduce one type
+          const cat = UNIT_STATS[t].category;
+          if (cat === 'archer' && archerCount > infantryCount + 3) continue;
+          if (cat === 'cavalry' && cavalryCount > infantryCount + 2) continue;
           r.wood -= cost.wood || 0;
           r.food -= cost.food || 0;
           r.gold -= cost.gold || 0;
+          r.stone -= cost.stone || 0;
           b.queue.push({ unit: t, progress: 0, cost: UNIT_STATS[t].cost });
           break;
         }
@@ -2404,18 +2531,50 @@ export class GameEngine {
     const army = [...this.units.values()].filter(
       u => u.team === 'enemy' && u.alive && u.type !== 'villager'
     );
-    if (army.length < 3) return; // not enough yet
+    // Scale minimum army size with age
+    const ageIdx = AGE_ORDER.indexOf(enemy.age);
+    const minArmy = ageIdx >= 2 ? 8 : ageIdx >= 1 ? 5 : 3;
+    if (army.length < minArmy) return; // wait for a bigger army in later ages
+
     // Target: nearest player building
     const playerBuildings = [...this.buildings.values()].filter(b => b.team === 'player');
     if (playerBuildings.length === 0) return;
-    // Prefer TC, then towers, then military buildings
-    const tc = playerBuildings.find(b => b.type === 'town_center');
-    const target = tc || playerBuildings[0];
-    for (const u of army) {
-      u.order = { kind: 'attackMove', target: target.pos.clone() };
-      this.pathTo(u, target.pos);
+
+    // Smart target selection:
+    // 1. If we have siege, target TC (can destroy it)
+    // 2. Otherwise target military buildings first (to cripple player production)
+    // 3. Fall back to nearest building
+    const hasSiege = army.some(u => UNIT_STATS[u.type].category === 'siege');
+    let target: Building | undefined;
+    if (hasSiege) {
+      // Target TC if we have siege
+      target = playerBuildings.find(b => b.type === 'town_center');
     }
-    this.cb.onLog?.('Enemy army is attacking!');
+    if (!target) {
+      // Target military buildings (barracks, archery, stable) to cripple production
+      const militaryBuildings = playerBuildings.filter(b =>
+        b.type === 'barracks' || b.type === 'archery_range' || b.type === 'stable' || b.type === 'siege_workshop'
+      );
+      if (militaryBuildings.length > 0) {
+        // Pick the nearest one to the enemy army's centroid
+        const centroid = new THREE.Vector3();
+        army.forEach(u => centroid.add(u.pos));
+        centroid.divideScalar(army.length);
+        militaryBuildings.sort((a, b) => a.pos.distanceTo(centroid) - b.pos.distanceTo(centroid));
+        target = militaryBuildings[0];
+      }
+    }
+    if (!target) {
+      // Fall back to TC, then any building
+      target = playerBuildings.find(b => b.type === 'town_center') || playerBuildings[0];
+    }
+
+    // Send the army with attackMove
+    for (const u of army) {
+      u.order = { kind: 'attackMove', target: target!.pos.clone() };
+      this.pathTo(u, target!.pos);
+    }
+    this.cb.onLog?.(`Enemy army (${army.length} units) is attacking your ${BUILDING_STATS[target!.type].label}!`);
   }
 
   // --------------------------------------------------------------------------

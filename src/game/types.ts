@@ -111,7 +111,7 @@ export interface Projectile {
 
 export interface Player {
   team: Team;
-  resources: { wood: number; food: number; gold: number };
+  resources: { wood: number; food: number; gold: number; stone: number };
   pop: number;
   popCap: number;
   age: Age;
