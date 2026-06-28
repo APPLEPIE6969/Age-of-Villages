@@ -234,14 +234,17 @@ export class CameraRig {
   }
 
   update = () => {
-    // Position camera in spherical coords around focal
+    // Position camera in spherical coords around focal.
+    // Use a FIXED ground level (0) for both focal.y and the lookAt target
+    // so the camera doesn't bounce up/down as you pan over hilly terrain.
+    const groundY = 0;
     const cp = Math.cos(this.pitch);
     this.camera.position.set(
       this.focal.x + this.distance * Math.sin(this.yaw) * cp,
-      this.focal.y + this.distance * Math.sin(this.pitch),
+      groundY + this.distance * Math.sin(this.pitch),
       this.focal.z + this.distance * Math.cos(this.yaw) * cp,
     );
-    this.camera.lookAt(this.focal.x, this.getHeightAt(this.focal.x, this.focal.z) + 1, this.focal.z);
+    this.camera.lookAt(this.focal.x, groundY + 1, this.focal.z);
   };
 
   tick(dt: number) {
