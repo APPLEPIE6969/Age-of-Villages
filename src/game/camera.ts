@@ -167,11 +167,13 @@ export class CameraRig {
       const dist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
       const angle = Math.atan2(t1.clientY - t0.clientY, t1.clientX - t0.clientX);
 
-      // Pan: move focal opposite to finger movement (screen drag)
+      // Pan: drag focal in the same direction as finger movement (natural drag)
+      // Fingers up (dy<0) → focal moves forward (dz>0)
+      // Fingers right (dx>0) → focal moves right (dx>0)
       const dx = cx - this.touchLastCenter.x;
       const dy = cy - this.touchLastCenter.y;
       const panAmt = this.panSpeed * (this.distance / 30) * 0.6;
-      this.panByScreen(-dx * panAmt * 0.05, -dy * panAmt * 0.05);
+      this.panByScreen(dx * panAmt * 0.05, -dy * panAmt * 0.05);
 
       // Pinch zoom
       if (this.touchLastDist > 0) {
@@ -247,9 +249,11 @@ export class CameraRig {
     // Skip keyboard/edge-pan while a two-finger touch gesture is active
     if (this.touchMode !== 'none') return;
     // Keyboard pan
+    // panByScreen(dx, dz): dx = right, dz = forward (toward where camera looks)
+    // So W = forward = dz +1, S = backward = dz -1, A = left = dx -1, D = right = dx +1
     let dx = 0, dz = 0;
-    if (this.keys['w'] || this.keys['arrowup']) dz -= 1;
-    if (this.keys['s'] || this.keys['arrowdown']) dz += 1;
+    if (this.keys['w'] || this.keys['arrowup']) dz += 1;
+    if (this.keys['s'] || this.keys['arrowdown']) dz -= 1;
     if (this.keys['a'] || this.keys['arrowleft']) dx -= 1;
     if (this.keys['d'] || this.keys['arrowright']) dx += 1;
     if (this.keys['q']) this.yaw += this.rotateSpeed * 60 * dt;
@@ -260,8 +264,9 @@ export class CameraRig {
       const h = window.innerHeight;
       if (this.mouse.x < this.edgePanMargin) dx -= 1;
       else if (this.mouse.x > w - this.edgePanMargin) dx += 1;
-      if (this.mouse.y < this.edgePanMargin) dz -= 1;
-      else if (this.mouse.y > h - this.edgePanMargin) dz += 1;
+      // Top edge = forward, bottom edge = backward
+      if (this.mouse.y < this.edgePanMargin) dz += 1;
+      else if (this.mouse.y > h - this.edgePanMargin) dz -= 1;
     }
     if (dx !== 0 || dz !== 0) {
       const len = Math.hypot(dx, dz) || 1;
