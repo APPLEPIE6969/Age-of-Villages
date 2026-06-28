@@ -1,4 +1,4 @@
-# ge of Villages — Browser RTS
+# Age of Villages — Browser RTS
 
 A fully playable **Age of Empires-style real-time strategy game** running entirely in the browser, built with **Three.js** (WebGL PBR rendering) and **Next.js 16**.
 
