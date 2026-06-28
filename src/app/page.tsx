@@ -204,15 +204,21 @@ export default function Home() {
     };
   }, [log]);
 
-  // Build buttons available based on age
-  const availableBuildings: BuildingType[] = [];
+  // Build buttons available based on age, grouped by category
   const ageIdx = AGE_ORDER.indexOf(resources.age);
-  (Object.keys(BUILDING_STATS) as BuildingType[]).forEach(t => {
-    const s = BUILDING_STATS[t];
-    if (AGE_ORDER.indexOf(s.age) <= ageIdx && t !== 'wall') {
-      availableBuildings.push(t);
-    }
-  });
+  const buildingCategories: { label: string; icon: string; buildings: BuildingType[] }[] = ([
+    { label: 'Economy', icon: '⚖', buildings: ['town_center', 'house', 'storage'] as BuildingType[] },
+    { label: 'Military', icon: '⚔', buildings: ['barracks', 'archery_range', 'stable', 'siege_workshop'] as BuildingType[] },
+    { label: 'Defense', icon: '🛡', buildings: ['tower', 'wall'] as BuildingType[] },
+  ] as const).map(cat => ({
+    ...cat,
+    buildings: cat.buildings.filter(t => {
+      const s = BUILDING_STATS[t];
+      return AGE_ORDER.indexOf(s.age) <= ageIdx;
+    }),
+  })).filter(cat => cat.buildings.length > 0);
+  // Flat list for mobile (no categories)
+  const availableBuildings: BuildingType[] = buildingCategories.flatMap(c => c.buildings);
 
   // Trainable units from selected building
   const selectedBuildingStats = selectedBuildingData ? BUILDING_STATS[selectedBuildingData.type] : null;
@@ -315,6 +321,65 @@ export default function Home() {
     const wx = mx * MAP_SIZE - MAP_SIZE / 2;
     const wz = mz * MAP_SIZE - MAP_SIZE / 2;
     engineRef.current?.panToMinimapPoint(wx, wz);
+  };
+
+  // Render a single building button (used by both mobile flat list and desktop categories)
+  const renderBuildingButton = (type: BuildingType) => {
+    const stats = BUILDING_STATS[type];
+    const canAfford =
+      (stats.cost.wood || 0) <= resources.wood &&
+      (stats.cost.food || 0) <= resources.food &&
+      (stats.cost.gold || 0) <= resources.gold;
+    const ageOk = AGE_ORDER.indexOf(stats.age) <= AGE_ORDER.indexOf(resources.age);
+    const disabled = !canAfford || !ageOk;
+    const isPlacing = placingBuilding === type;
+    return (
+      <button
+        key={type}
+        onClick={() => handleBuildClick(type)}
+        disabled={disabled}
+        title={`${stats.label}\nCost: ${stats.cost.wood || 0}w ${stats.cost.food || 0}f ${stats.cost.gold || 0}g\nHP: ${stats.hp}\nRequires: ${AGE_INFO[stats.age].label}${stats.popProvided ? `\n+${stats.popProvided} pop` : ''}`}
+        style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+          padding: isMobile ? '0.3rem 0.3rem' : '0.35rem 0.4rem',
+          background: isPlacing ? '#4f8cff' : (disabled ? '#1a2530' : '#2c4060'),
+          color: disabled ? '#5a6878' : '#fff',
+          border: `1px solid ${isPlacing ? '#88ccff' : (disabled ? '#2a3848' : '#4f8cff')}`,
+          borderRadius: '4px',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          minWidth: isMobile ? '56px' : '76px',
+          minHeight: isMobile ? '56px' : 'auto',
+          fontSize: isMobile ? '9px' : '10px',
+          opacity: disabled ? 0.5 : 1,
+        }}
+      >
+        {buildingIcons[type] ? (
+          <img
+            src={buildingIcons[type]}
+            alt={stats.label}
+            style={{
+              width: isMobile ? 36 : 42,
+              height: isMobile ? 36 : 42,
+              objectFit: 'contain',
+              filter: disabled ? 'grayscale(80%) brightness(0.6)' : 'none',
+              imageRendering: 'auto',
+            }}
+          />
+        ) : (
+          <div style={{ width: 42, height: 42, background: '#1a2530', borderRadius: '2px' }} />
+        )}
+        <div style={{ fontSize: '9px', marginTop: '0.1rem', color: '#9ad7ff', fontWeight: 600 }}>
+          {stats.cost.wood ? `${stats.cost.wood}w ` : ''}
+          {stats.cost.food ? `${stats.cost.food}f ` : ''}
+          {stats.cost.gold ? `${stats.cost.gold}g` : ''}
+        </div>
+        {stats.popProvided > 0 && (
+          <div style={{ fontSize: '8px', color: '#c39bd3', marginTop: '0.05rem' }}>
+            +{stats.popProvided} pop
+          </div>
+        )}
+      </button>
+    );
   };
 
   // Drag box overlay
@@ -652,7 +717,7 @@ export default function Home() {
         borderRadius: '6px',
         color: '#e8eef5',
         zIndex: 20,
-        maxWidth: isMobile ? 'calc(100vw - 145px)' : 'calc(100vw - 540px)',
+        maxWidth: isMobile ? 'calc(100vw - 145px)' : 'calc(100vw - 500px)',
         overflowX: 'auto',
         boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
       }}>
@@ -712,63 +777,30 @@ export default function Home() {
           })
         ) : !selectedBuildingData && !selectedUnitsData ? (
           // Build panel (only shown when nothing is selected)
-          availableBuildings.map(type => {
-            const stats = BUILDING_STATS[type];
-            const canAfford =
-              (stats.cost.wood || 0) <= resources.wood &&
-              (stats.cost.food || 0) <= resources.food &&
-              (stats.cost.gold || 0) <= resources.gold;
-            const ageOk = AGE_ORDER.indexOf(stats.age) <= AGE_ORDER.indexOf(resources.age);
-            const disabled = !canAfford || !ageOk;
-            const isPlacing = placingBuilding === type;
-            return (
-              <button
-                key={type}
-                onClick={() => handleBuildClick(type)}
-                disabled={disabled}
-                title={`${stats.label}\nCost: ${stats.cost.wood || 0}w ${stats.cost.food || 0}f ${stats.cost.gold || 0}g\nHP: ${stats.hp}\nRequires: ${AGE_INFO[stats.age].label}${stats.popProvided ? `\n+${stats.popProvided} pop` : ''}`}
-                style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'center',
-                  padding: isMobile ? '0.3rem 0.3rem' : '0.35rem 0.4rem',
-                  background: isPlacing ? '#4f8cff' : (disabled ? '#1a2530' : '#2c4060'),
-                  color: disabled ? '#5a6878' : '#fff',
-                  border: `1px solid ${isPlacing ? '#88ccff' : (disabled ? '#2a3848' : '#4f8cff')}`,
-                  borderRadius: '4px',
-                  cursor: disabled ? 'not-allowed' : 'pointer',
-                  minWidth: isMobile ? '56px' : '76px',
-                  minHeight: isMobile ? '56px' : 'auto',
-                  fontSize: isMobile ? '9px' : '10px',
-                  opacity: disabled ? 0.5 : 1,
-                }}
-              >
-                {buildingIcons[type] ? (
-                  <img
-                    src={buildingIcons[type]}
-                    alt={stats.label}
-                    style={{
-                      width: isMobile ? 36 : 42,
-                      height: isMobile ? 36 : 42,
-                      objectFit: 'contain',
-                      filter: disabled ? 'grayscale(80%) brightness(0.6)' : 'none',
-                      imageRendering: 'auto',
-                    }}
-                  />
-                ) : (
-                  <div style={{ width: 42, height: 42, background: '#1a2530', borderRadius: '2px' }} />
-                )}
-                <div style={{ fontSize: '9px', marginTop: '0.1rem', color: '#9ad7ff', fontWeight: 600 }}>
-                  {stats.cost.wood ? `${stats.cost.wood}w ` : ''}
-                  {stats.cost.food ? `${stats.cost.food}f ` : ''}
-                  {stats.cost.gold ? `${stats.cost.gold}g` : ''}
-                </div>
-                {stats.popProvided > 0 && (
-                  <div style={{ fontSize: '8px', color: '#c39bd3', marginTop: '0.05rem' }}>
-                    +{stats.popProvided} pop
+          // Desktop: categorized with headers. Mobile: flat row (space-constrained).
+          isMobile ? (
+            // Mobile: flat row of all buildings
+            availableBuildings.map(type => renderBuildingButton(type))
+          ) : (
+            // Desktop: grouped by category with headers
+            <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'flex-start' }}>
+              {buildingCategories.map(cat => (
+                <div key={cat.label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
+                  <div style={{
+                    fontSize: '10px', fontWeight: 700, color: '#9ad7ff',
+                    textTransform: 'uppercase', letterSpacing: '0.05em',
+                    padding: '0.1rem 0.4rem', borderBottom: '1px solid #4f8cff',
+                    marginBottom: '0.15rem',
+                  }}>
+                    {cat.icon} {cat.label}
                   </div>
-                )}
-              </button>
-            );
-          })
+                  <div style={{ display: 'flex', gap: '0.3rem' }}>
+                    {cat.buildings.map(type => renderBuildingButton(type))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
         ) : (
           <div style={{ color: '#9aa8b8', padding: '0.4rem 0.6rem', fontSize: '11px' }}>
             Select a building to train units, or deselect to see build options.
