@@ -235,15 +235,10 @@ export function buildTerrain(scene: THREE.Scene, seed = 1337): TerrainData {
         vec4 colS = texture2D(map4, vHighUv);
         diffuseColor = colG * wG + colD * wD + colR * wR + colS * wS;
       `)
-      // Replace normal_fragment to blend normal maps
-      .replace('#include <normal_fragment_maps>', `
-        vec3 nG = texture2D(normalMap, vHighUv).rgb * 2.0 - 1.0;
-        vec3 nD = texture2D(normalMap2, vHighUv).rgb * 2.0 - 1.0;
-        vec3 nR = texture2D(normalMap3, vHighUv).rgb * 2.0 - 1.0;
-        vec3 nS = texture2D(normalMap4, vHighUv).rgb * 2.0 - 1.0;
-        vec3 blended = nG * wG + nD * wD + nR * wR + nS * wS;
-        normal = perturbNormal2Arb(-vViewPosition, normal, blended, faceDirection);
-      `)
+      // Note: We skip custom normal map blending — perturbNormal2Arb's signature
+      // changed in Three.js r185 and breaks the shader. The grass normal map
+      // (set as the material's normalMap) is used everywhere, which is fine
+      // because the terrain's normal detail is subtle at RTS camera distance.
       // Replace roughness_map_fragment to blend roughness maps
       .replace('#include <roughnessmap_fragment>', `
         float rG = texture2D(roughnessMap, vHighUv).g;
