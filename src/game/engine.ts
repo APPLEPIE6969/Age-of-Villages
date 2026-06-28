@@ -368,13 +368,13 @@ export class GameEngine {
     // Update pathfinder — block TC footprint
     this.blockBuildingFootprint(tc);
 
-    // 3 villagers near TC
+    // 3 villagers near TC (free — starting units don't cost resources)
     for (let i = 0; i < 3; i++) {
       const a = (i / 3) * Math.PI * 2;
       const vx = pos.x + Math.cos(a) * 5;
       const vz = pos.z + Math.sin(a) * 5;
       const vy = this.terrain.getHeightAt(vx, vz);
-      this.createUnit('villager', team, new THREE.Vector3(vx, vy, vz));
+      this.createUnit('villager', team, new THREE.Vector3(vx, vy, vz), { skipCostCheck: true });
     }
 
     // Scout (free) for early exploration
@@ -382,7 +382,7 @@ export class GameEngine {
     const sx = pos.x + Math.cos(sa) * 7;
     const sz = pos.z + Math.sin(sa) * 7;
     const sy = this.terrain.getHeightAt(sx, sz);
-    this.createUnit('scout', team, new THREE.Vector3(sx, sy, sz));
+    this.createUnit('scout', team, new THREE.Vector3(sx, sy, sz), { skipCostCheck: true });
   }
 
   // --------------------------------------------------------------------------
