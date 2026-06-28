@@ -51,6 +51,8 @@ export default function Home() {
   const [showHelp, setShowHelp] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [showBuildPanel, setShowBuildPanel] = useState(false);
+  const [unitIcons, setUnitIcons] = useState<Record<string, string>>({});
+  const [buildingIcons, setBuildingIcons] = useState<Record<string, string>>({});
 
   // Detect mobile / small screen
   useEffect(() => {
@@ -122,6 +124,25 @@ export default function Home() {
     engine.init();
     engine.start();
     engineRef.current = engine;
+
+    // Load preview icons for all unit/building types (deferred to next tick
+    // so it doesn't block the first paint and avoids the set-state-in-effect lint)
+    const uIcons: Record<string, string> = {};
+    const bIcons: Record<string, string> = {};
+    (['villager', 'militia', 'man_at_arms', 'long_swordsman', 'two_handed_swordsman',
+      'archer', 'crossbowman', 'arbalester',
+      'scout', 'knight', 'cavalier', 'ram'] as UnitType[]).forEach(t => {
+      uIcons[t] = engine.getUnitIconURL(t);
+    });
+    (['town_center', 'house', 'barracks', 'archery_range', 'stable',
+      'siege_workshop', 'storage', 'tower', 'wall'] as BuildingType[]).forEach(t => {
+      bIcons[t] = engine.getBuildingIconURL(t);
+    });
+    // Use a microtask to defer the state update out of the effect body
+    Promise.resolve().then(() => {
+      setUnitIcons(uIcons);
+      setBuildingIcons(bIcons);
+    });
 
     // Periodic HUD refresh (for queue progress, HP changes, minimap)
     const interval = setInterval(() => {
@@ -474,25 +495,41 @@ export default function Home() {
             <div style={{ fontWeight: 700, marginBottom: '0.3rem', color: '#88ccff' }}>
               {selectedUnitsData.count} unit{selectedUnitsData.count !== 1 ? 's' : ''} selected
             </div>
-            {/* Group by type */}
+            {/* Group by type, showing icon + label + count */}
             {Object.entries(
               selectedUnitsData.types.reduce<Record<string, number>>((acc, t) => {
                 acc[t] = (acc[t] || 0) + 1; return acc;
               }, {})
             ).map(([t, count]) => (
-              <div key={t} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.15rem 0' }}>
-                <span>{UNIT_STATS[t as UnitType].label}</span>
-                <span style={{ color: '#88ccff' }}>x{count}</span>
+              <div key={t} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.2rem 0' }}>
+                {unitIcons[t] && (
+                  <img
+                    src={unitIcons[t]}
+                    alt={UNIT_STATS[t as UnitType].label}
+                    style={{ width: isMobile ? 28 : 32, height: isMobile ? 28 : 32, objectFit: 'contain' }}
+                  />
+                )}
+                <span style={{ flex: 1 }}>{UNIT_STATS[t as UnitType].label}</span>
+                <span style={{ color: '#88ccff', fontWeight: 600 }}>x{count}</span>
               </div>
             ))}
-            <div style={{ marginTop: '0.4rem', fontSize: '11px', color: '#9aa8b8' }}>
-              Right-click: move / gather / attack
+            <div style={{ marginTop: '0.4rem', fontSize: isMobile ? '9px' : '11px', color: '#9aa8b8' }}>
+              {isMobile ? 'Long-press: move/gather/attack' : 'Right-click: move / gather / attack'}
             </div>
           </div>
         ) : selectedBuildingData ? (
           <div>
-            <div style={{ fontWeight: 700, marginBottom: '0.3rem', color: '#88ccff' }}>
-              {BUILDING_STATS[selectedBuildingData.type].label}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem' }}>
+              {buildingIcons[selectedBuildingData.type] && (
+                <img
+                  src={buildingIcons[selectedBuildingData.type]}
+                  alt={BUILDING_STATS[selectedBuildingData.type].label}
+                  style={{ width: isMobile ? 36 : 44, height: isMobile ? 36 : 44, objectFit: 'contain' }}
+                />
+              )}
+              <div style={{ fontWeight: 700, color: '#88ccff' }}>
+                {BUILDING_STATS[selectedBuildingData.type].label}
+              </div>
             </div>
             {selectedBuildingData.underConstruction ? (
               <div style={{ marginBottom: '0.4rem' }}>
@@ -638,25 +675,37 @@ export default function Home() {
                 title={`${stats.label}\nCost: ${stats.cost.wood || 0}w ${stats.cost.food || 0}f ${stats.cost.gold || 0}g\nPop: ${stats.popCost}\nHP: ${stats.hp}  DMG: ${stats.damage}\nRequires: ${AGE_INFO[stats.age].label}`}
                 style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'center',
-                  padding: isMobile ? '0.5rem 0.4rem' : '0.4rem 0.5rem',
+                  padding: isMobile ? '0.3rem 0.3rem' : '0.35rem 0.4rem',
                   background: disabled ? '#1a2530' : '#2c4060',
                   color: disabled ? '#5a6878' : '#fff',
                   border: `1px solid ${disabled ? '#2a3848' : '#4f8cff'}`,
                   borderRadius: '4px',
                   cursor: disabled ? 'not-allowed' : 'pointer',
                   minWidth: isMobile ? '56px' : '76px',
-                  minHeight: isMobile ? '44px' : 'auto',
-                  fontSize: isMobile ? '9px' : '11px',
+                  minHeight: isMobile ? '56px' : 'auto',
+                  fontSize: isMobile ? '9px' : '10px',
+                  opacity: disabled ? 0.5 : 1,
                 }}
               >
-                <div style={{ fontWeight: 700, fontSize: '11px' }}>{stats.label}</div>
-                <div style={{ fontSize: '10px', marginTop: '0.15rem' }}>
+                {unitIcons[unit] ? (
+                  <img
+                    src={unitIcons[unit]}
+                    alt={stats.label}
+                    style={{
+                      width: isMobile ? 36 : 42,
+                      height: isMobile ? 36 : 42,
+                      objectFit: 'contain',
+                      filter: disabled ? 'grayscale(80%) brightness(0.6)' : 'none',
+                      imageRendering: 'auto',
+                    }}
+                  />
+                ) : (
+                  <div style={{ width: 42, height: 42, background: '#1a2530', borderRadius: '2px' }} />
+                )}
+                <div style={{ fontSize: '9px', marginTop: '0.1rem', color: '#9ad7ff', fontWeight: 600 }}>
                   {stats.cost.wood ? `${stats.cost.wood}w ` : ''}
                   {stats.cost.food ? `${stats.cost.food}f ` : ''}
                   {stats.cost.gold ? `${stats.cost.gold}g` : ''}
-                </div>
-                <div style={{ fontSize: '9px', color: '#9aa8b8', marginTop: '0.1rem' }}>
-                  {AGE_INFO[stats.age].label}
                 </div>
               </button>
             );
@@ -680,25 +729,40 @@ export default function Home() {
                 title={`${stats.label}\nCost: ${stats.cost.wood || 0}w ${stats.cost.food || 0}f ${stats.cost.gold || 0}g\nHP: ${stats.hp}\nRequires: ${AGE_INFO[stats.age].label}${stats.popProvided ? `\n+${stats.popProvided} pop` : ''}`}
                 style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'center',
-                  padding: isMobile ? '0.5rem 0.4rem' : '0.4rem 0.5rem',
+                  padding: isMobile ? '0.3rem 0.3rem' : '0.35rem 0.4rem',
                   background: isPlacing ? '#4f8cff' : (disabled ? '#1a2530' : '#2c4060'),
                   color: disabled ? '#5a6878' : '#fff',
                   border: `1px solid ${isPlacing ? '#88ccff' : (disabled ? '#2a3848' : '#4f8cff')}`,
                   borderRadius: '4px',
                   cursor: disabled ? 'not-allowed' : 'pointer',
                   minWidth: isMobile ? '56px' : '76px',
-                  minHeight: isMobile ? '44px' : 'auto',
-                  fontSize: isMobile ? '9px' : '11px',
+                  minHeight: isMobile ? '56px' : 'auto',
+                  fontSize: isMobile ? '9px' : '10px',
+                  opacity: disabled ? 0.5 : 1,
                 }}
               >
-                <div style={{ fontWeight: 700, fontSize: '11px' }}>{stats.label}</div>
-                <div style={{ fontSize: '10px', marginTop: '0.15rem' }}>
+                {buildingIcons[type] ? (
+                  <img
+                    src={buildingIcons[type]}
+                    alt={stats.label}
+                    style={{
+                      width: isMobile ? 36 : 42,
+                      height: isMobile ? 36 : 42,
+                      objectFit: 'contain',
+                      filter: disabled ? 'grayscale(80%) brightness(0.6)' : 'none',
+                      imageRendering: 'auto',
+                    }}
+                  />
+                ) : (
+                  <div style={{ width: 42, height: 42, background: '#1a2530', borderRadius: '2px' }} />
+                )}
+                <div style={{ fontSize: '9px', marginTop: '0.1rem', color: '#9ad7ff', fontWeight: 600 }}>
                   {stats.cost.wood ? `${stats.cost.wood}w ` : ''}
                   {stats.cost.food ? `${stats.cost.food}f ` : ''}
                   {stats.cost.gold ? `${stats.cost.gold}g` : ''}
                 </div>
                 {stats.popProvided > 0 && (
-                  <div style={{ fontSize: '9px', color: '#9b59b6', marginTop: '0.1rem' }}>
+                  <div style={{ fontSize: '8px', color: '#c39bd3', marginTop: '0.05rem' }}>
                     +{stats.popProvided} pop
                   </div>
                 )}

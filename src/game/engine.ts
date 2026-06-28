@@ -15,6 +15,7 @@ import {
 } from './models';
 import { CameraRig } from './camera';
 import { Pathfinder } from './pathfinding';
+import { pregenerateIcons, disposeIcons, getUnitIcon, getBuildingIcon } from './icons';
 import {
   Unit, Building, ResourceNode, Projectile, Player, Team,
 } from './types';
@@ -212,9 +213,17 @@ export class GameEngine {
     // Input handlers
     this.attachInput();
 
+    // Pre-generate unit/building preview icons for the HUD
+    pregenerateIcons();
+
     // Initial callback
     this.cb.onResourcesChange?.(this.players.player, this.players.enemy);
   }
+
+  /** Get a unit preview icon as a data URL (for HUD buttons) */
+  getUnitIconURL(type: UnitType): string { return getUnitIcon(type); }
+  /** Get a building preview icon as a data URL (for HUD buttons) */
+  getBuildingIconURL(type: BuildingType): string { return getBuildingIcon(type); }
 
   private worldFromTile(u: number, v: number): THREE.Vector3 {
     const half = MAP_SIZE / 2;
@@ -2262,6 +2271,7 @@ export class GameEngine {
     el.removeEventListener('mousemove', this.onMouseMove);
     el.removeEventListener('contextmenu', this.onContext);
     if (el.parentElement) el.parentElement.removeChild(el);
+    disposeIcons();
   }
 
   // --------------------------------------------------------------------------
