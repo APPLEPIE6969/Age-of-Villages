@@ -146,109 +146,37 @@ export function buildTerrain(scene: THREE.Scene, seed = 1337): TerrainData {
     }
   }
 
-  // Build a splat texture from the per-vertex weights (downsampled to a manageable size)
-  const splatSize = MAP_TILES + 1;
-  const splatCanvas = document.createElement('canvas');
-  splatCanvas.width = splatCanvas.height = splatSize;
-  const sctx = splatCanvas.getContext('2d')!;
-  const simg = sctx.createImageData(splatSize, splatSize);
+  // --- Vertex colors based on biome (grass/dirt/rock/sand) ---
+  // Reliable approach: bake the splat weights into vertex colors.
+  // MeshStandardMaterial with vertexColors=true blends these with the map texture.
+  const colors = new Float32Array(vertCount * 3);
   for (let i = 0; i < vertCount; i++) {
-    simg.data[i * 4 + 0] = splat[i * 4 + 0];
-    simg.data[i * 4 + 1] = splat[i * 4 + 1];
-    simg.data[i * 4 + 2] = splat[i * 4 + 2];
-    simg.data[i * 4 + 3] = splat[i * 4 + 3];
+    const wD = splat[i * 4 + 0] / 255; // dirt
+    const wG = splat[i * 4 + 1] / 255; // grass
+    const wR = splat[i * 4 + 2] / 255; // rock
+    const wS = splat[i * 4 + 3] / 255; // sand
+    // Terrain palette (linear-ish, will be tone-mapped by ACES)
+    // grass: (0.22, 0.38, 0.12)  dirt: (0.32, 0.22, 0.12)  rock: (0.38, 0.36, 0.32)  sand: (0.78, 0.68, 0.45)
+    colors[i * 3 + 0] = wG * 0.22 + wD * 0.32 + wR * 0.38 + wS * 0.78;
+    colors[i * 3 + 1] = wG * 0.38 + wD * 0.22 + wR * 0.36 + wS * 0.68;
+    colors[i * 3 + 2] = wG * 0.12 + wD * 0.12 + wR * 0.32 + wS * 0.45;
   }
-  sctx.putImageData(simg, 0, 0);
-  const splatTex = new THREE.CanvasTexture(splatCanvas);
-  splatTex.wrapS = splatTex.wrapT = THREE.ClampToEdgeWrapping;
-  splatTex.colorSpace = THREE.LinearSRGBColorSpace;
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-  // Build material with custom splat shader via onBeforeCompile
+  // Use a single tiled grass texture for subtle detail, multiplied by vertex colors.
+  // This is robust — no onBeforeCompile shader patching that can break across three.js versions.
   const tex = getTextures();
-  // Repeat wrapping for the tiled PBR textures
-  [tex.grass, tex.dirt, tex.rock, tex.sand].forEach(set => {
-    set.map.repeat.set(48, 48);
-    set.normalMap.repeat.set(48, 48);
-    set.roughnessMap?.repeat.set(48, 48);
-  });
+  // Keep repeat modest so the detail is visible but not noisy
+  tex.grass.map.repeat.set(60, 60);
+  tex.grass.normalMap.repeat.set(60, 60);
 
   const mat = new THREE.MeshStandardMaterial({
+    vertexColors: true,
     map: tex.grass.map,
     normalMap: tex.grass.normalMap,
-    roughnessMap: tex.grass.roughnessMap,
-    roughness: 1.0,
+    roughness: 0.95,
     metalness: 0.0,
   });
-
-  mat.onBeforeCompile = (shader) => {
-    // Add uniforms for splat map + 3 extra textures
-    shader.uniforms.splatMap = { value: splatTex };
-    shader.uniforms.map2 = { value: tex.dirt.map };
-    shader.uniforms.map3 = { value: tex.rock.map };
-    shader.uniforms.map4 = { value: tex.sand.map };
-    shader.uniforms.normalMap2 = { value: tex.dirt.normalMap };
-    shader.uniforms.normalMap3 = { value: tex.rock.normalMap };
-    shader.uniforms.normalMap4 = { value: tex.sand.normalMap };
-    shader.uniforms.roughnessMap2 = { value: tex.dirt.roughnessMap };
-    shader.uniforms.roughnessMap3 = { value: tex.rock.roughnessMap };
-    shader.uniforms.roughnessMap4 = { value: tex.sand.roughnessMap };
-
-    // ---- Vertex shader ----
-    // Pass through world UV (UV1 already 0..1 across the plane). We need
-    // a high-frequency UV for the tiled textures (UV * 48) and the splat UV (UV itself).
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', `
-        #include <common>
-        varying vec2 vHighUv;   // tiled UV (0..48)
-        varying vec2 vSplatUv;  // splat UV (0..1)
-      `)
-      .replace('#include <uv_vertex>', `
-        #include <uv_vertex>
-        vHighUv = uv * 48.0;
-        vSplatUv = uv;
-      `);
-
-    // ---- Fragment shader ----
-    shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `
-        #include <common>
-        uniform sampler2D splatMap;
-        uniform sampler2D map2; uniform sampler2D map3; uniform sampler2D map4;
-        uniform sampler2D normalMap2; uniform sampler2D normalMap3; uniform sampler2D normalMap4;
-        uniform sampler2D roughnessMap2; uniform sampler2D roughnessMap3; uniform sampler2D roughnessMap4;
-        varying vec2 vHighUv;
-        varying vec2 vSplatUv;
-      `)
-      // Replace the map_fragment chunk to do 4-way splat blend
-      .replace('#include <map_fragment>', `
-        vec4 splat = texture2D(splatMap, vSplatUv);
-        float wG = splat.g;
-        float wD = splat.r;
-        float wR = splat.b;
-        float wS = splat.a;
-        // Normalize (in case weights don't sum to 1 due to noise)
-        float sumW = wG + wD + wR + wS + 0.0001;
-        wG /= sumW; wD /= sumW; wR /= sumW; wS /= sumW;
-        vec4 colG = texture2D(map, vHighUv);
-        vec4 colD = texture2D(map2, vHighUv);
-        vec4 colR = texture2D(map3, vHighUv);
-        vec4 colS = texture2D(map4, vHighUv);
-        diffuseColor = colG * wG + colD * wD + colR * wR + colS * wS;
-      `)
-      // Note: We skip custom normal map blending — perturbNormal2Arb's signature
-      // changed in Three.js r185 and breaks the shader. The grass normal map
-      // (set as the material's normalMap) is used everywhere, which is fine
-      // because the terrain's normal detail is subtle at RTS camera distance.
-      // Replace roughness_map_fragment to blend roughness maps
-      .replace('#include <roughnessmap_fragment>', `
-        float rG = texture2D(roughnessMap, vHighUv).g;
-        float rD = texture2D(roughnessMap2, vHighUv).g;
-        float rR = texture2D(roughnessMap3, vHighUv).g;
-        float rS = texture2D(roughnessMap4, vHighUv).g;
-        float roughnessFactor = rG * wG + rD * wD + rR * wR + rS * wS;
-        roughnessFactor *= roughnessFactor; // square for better range
-      `);
-  };
 
   const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;
