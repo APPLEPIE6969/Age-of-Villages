@@ -106,13 +106,14 @@ export class GameEngine {
 
     // Scene
     this.scene = new THREE.Scene();
-    // Sky color (slightly different from fog so the horizon is readable)
-    this.scene.background = new THREE.Color(0x8aa8c8);
-    this.scene.fog = new THREE.Fog(0xa5bdd0, 280, 600);
+    // Sky — distinct blue
+    this.scene.background = new THREE.Color(0x5a7fa5);
+    // Fog — warm brown/green so distant terrain reads as "ground" not "sky"
+    this.scene.fog = new THREE.Fog(0x7a8060, 350, 700);
 
     // Camera
     this.camera = new THREE.PerspectiveCamera(
-      55, window.innerWidth / window.innerHeight, 0.5, 800,
+      55, window.innerWidth / window.innerHeight, 0.5, 1000,
     );
 
     // Lighting + env
@@ -196,12 +197,13 @@ export class GameEngine {
     this.cameraRig.focal.set(playerSpawn.x, 0, playerSpawn.z);
     // Player spawn is at (-X, +Z) corner. Camera should be at corner side, looking toward +X, -Z.
     this.cameraRig.yaw = -Math.PI * 0.25;
-    this.cameraRig.pitch = 0.7;
-    this.cameraRig.distance = 30;
-    this.cameraRig.minDist = 12;
-    this.cameraRig.maxDist = 130;
-    this.cameraRig.minPitch = 0.4;
-    this.cameraRig.maxPitch = 1.25;
+    // Higher pitch = more top-down so terrain fills the screen (classic RTS view)
+    this.cameraRig.pitch = 1.2;  // ~69° from horizontal — nearly top-down
+    this.cameraRig.distance = 40;
+    this.cameraRig.minDist = 15;
+    this.cameraRig.maxDist = 150;
+    this.cameraRig.minPitch = 0.5;
+    this.cameraRig.maxPitch = 1.35;
     this.cameraRig.update();
 
     // Resize handler
@@ -532,9 +534,204 @@ export class GameEngine {
     window.addEventListener('mouseup', this.onMouseUp);
     el.addEventListener('mousemove', this.onMouseMove);
     el.addEventListener('contextmenu', this.onContext);
+    // Touch — one-finger selection (tap=click, drag=box-select, long-press=command menu)
+    el.addEventListener('touchstart', this.onTouchStart, { passive: false });
+    el.addEventListener('touchmove', this.onTouchMove, { passive: false });
+    el.addEventListener('touchend', this.onTouchEnd, { passive: false });
+    el.addEventListener('touchcancel', this.onTouchEnd, { passive: false });
   }
 
   private onContext = (e: Event) => e.preventDefault();
+
+  // --- Touch state for one-finger selection ---
+  private touchStartPos = { x: 0, y: 0, time: 0 };
+  private touchActive = false;
+  private touchLongPressTimer: ReturnType<typeof setTimeout> | null = null;
+  private touchLongPressFired = false;
+  private touchCurrentPos = { x: 0, y: 0 };
+  private touchDragBox: { x0: number; y0: number; x1: number; y1: number } | null = null;
+
+  private onTouchStart = (e: TouchEvent) => {
+    if (this.gameOver) return;
+    // Only handle one-finger touches (two-finger = camera rig handles pan/zoom/rotate)
+    if (e.touches.length !== 1) {
+      // Two fingers started — cancel any ongoing one-finger gesture
+      this.touchActive = false;
+      if (this.touchLongPressTimer) {
+        clearTimeout(this.touchLongPressTimer);
+        this.touchLongPressTimer = null;
+      }
+      this.touchDragBox = null;
+      return;
+    }
+    const t = e.touches[0];
+    this.touchActive = true;
+    this.touchLongPressFired = false;
+    this.touchStartPos = { x: t.clientX, y: t.clientY, time: Date.now() };
+    this.touchCurrentPos = { x: t.clientX, y: t.clientY };
+    // If placing a building, handle on touchend (tap)
+    if (!this.placingBuilding) {
+      // Start a potential drag-box
+      this.touchDragBox = { x0: t.clientX, y0: t.clientY, x1: t.clientX, y1: t.clientY };
+    }
+    // Long-press = right-click (issue command to current selection at touch point)
+    this.touchLongPressTimer = setTimeout(() => {
+      if (this.touchActive) {
+        this.touchLongPressFired = true;
+        this.touchDragBox = null;
+        this.simulateRightClick(this.touchStartPos.x, this.touchStartPos.y);
+      }
+    }, 450);
+  };
+
+  private onTouchMove = (e: TouchEvent) => {
+    if (!this.touchActive || e.touches.length !== 1) return;
+    e.preventDefault();
+    const t = e.touches[0];
+    this.touchCurrentPos = { x: t.clientX, y: t.clientY };
+    const dx = Math.abs(t.clientX - this.touchStartPos.x);
+    const dy = Math.abs(t.clientY - this.touchStartPos.y);
+    // Cancel long-press if finger moved too much
+    if ((dx > 10 || dy > 10) && this.touchLongPressTimer) {
+      clearTimeout(this.touchLongPressTimer);
+      this.touchLongPressTimer = null;
+    }
+    // Update drag box (for box-select)
+    if (this.touchDragBox && !this.touchLongPressFired) {
+      this.touchDragBox.x1 = t.clientX;
+      this.touchDragBox.y1 = t.clientY;
+    }
+    // If placing building, move ghost
+    if (this.placingBuilding && this.ghostMesh) {
+      this.updateNDC({ clientX: t.clientX, clientY: t.clientY } as MouseEvent);
+      const point = this.pickTerrain();
+      if (point) {
+        const y = this.terrain.getHeightAt(point.x, point.z);
+        this.ghostMesh.position.set(point.x, y, point.z);
+        this.ghostMesh.visible = true;
+        const valid = this.canPlaceBuildingAt(this.placingBuilding, point);
+        this.ghostMesh.traverse(o => {
+          if (o instanceof THREE.Mesh) {
+            const mat = o.material as THREE.MeshBasicMaterial;
+            mat.color.setHex(valid ? 0x33ff66 : 0xff3333);
+          }
+        });
+      }
+    }
+  };
+
+  private onTouchEnd = (e: TouchEvent) => {
+    if (!this.touchActive) return;
+    this.touchActive = false;
+    if (this.touchLongPressTimer) {
+      clearTimeout(this.touchLongPressTimer);
+      this.touchLongPressTimer = null;
+    }
+    // If long-press already fired, don't also do a tap action
+    if (this.touchLongPressFired) {
+      this.touchDragBox = null;
+      return;
+    }
+    const dx = Math.abs(this.touchCurrentPos.x - this.touchStartPos.x);
+    const dy = Math.abs(this.touchCurrentPos.y - this.touchStartPos.y);
+    const moved = dx > 10 || dy > 10;
+
+    if (this.placingBuilding) {
+      // Tap = place building
+      if (!moved) {
+        this.simulateLeftClick(this.touchCurrentPos.x, this.touchCurrentPos.y);
+      }
+      this.touchDragBox = null;
+      return;
+    }
+
+    if (!moved) {
+      // Tap = click select
+      this.simulateLeftClick(this.touchCurrentPos.x, this.touchCurrentPos.y);
+    } else if (this.touchDragBox) {
+      // Drag = box select
+      this.handleBoxSelect(this.touchDragBox);
+    }
+    this.touchDragBox = null;
+  };
+
+  // Synthesize a left-click at screen coords (for touch tap)
+  private simulateLeftClick(x: number, y: number) {
+    this.updateNDC({ clientX: x, clientY: y } as MouseEvent);
+    const pick = this.pickUnitOrBuilding();
+    if (pick) {
+      if (pick.kind === 'unit') {
+        const u = this.units.get(pick.id)!;
+        this.selectUnits([u.id]);
+      } else if (pick.kind === 'building') {
+        const b = this.buildings.get(pick.id)!;
+        this.selectBuilding(b.id);
+      } else {
+        this.deselectAll();
+      }
+    } else {
+      this.deselectAll();
+    }
+  }
+
+  // Synthesize a right-click at screen coords (for touch long-press)
+  private simulateRightClick(x: number, y: number) {
+    if (this.selectedUnitIds.length === 0 && this.selectedBuildingId === null) return;
+    this.updateNDC({ clientX: x, clientY: y } as MouseEvent);
+    const pick = this.pickUnitOrBuilding();
+    const point = this.pickTerrain();
+    if (!point) return;
+    if (this.selectedUnitIds.length > 0) {
+      if (pick) {
+        if (pick.kind === 'unit') {
+          const target = this.units.get(pick.id)!;
+          if (target.team !== 'player') {
+            this.commandAttack(pick.id);
+            this.spawnMoveMarker(target.pos, 0xff3333);
+            return;
+          }
+        } else if (pick.kind === 'resource') {
+          this.commandGather(pick.id);
+          const r = this.resources.get(pick.id);
+          if (r) this.spawnMoveMarker(r.pos, 0xffaa33);
+          return;
+        } else if (pick.kind === 'building') {
+          const b = this.buildings.get(pick.id)!;
+          if (b.underConstruction && b.team === 'player') {
+            this.commandBuild(pick.id);
+            this.spawnMoveMarker(b.pos, 0xffaa33);
+            return;
+          }
+          if (b.team !== 'player') {
+            this.commandAttackBuilding(pick.id);
+            this.spawnMoveMarker(b.pos, 0xff3333);
+            return;
+          }
+          // Friendly building: drop off / move
+          for (const id of this.selectedUnitIds) {
+            const u = this.units.get(id);
+            if (!u) continue;
+            if (u.carrying) {
+              u.order = { kind: 'returnResource', dropBuildingId: b.id };
+              this.pathTo(u, b.pos);
+            } else {
+              u.order = { kind: 'move', target: b.pos.clone() };
+              this.pathTo(u, b.pos);
+            }
+          }
+          return;
+        }
+      }
+      this.commandMove(point);
+      this.spawnMoveMarker(point, 0x33ff66);
+    } else if (this.selectedBuildingId !== null) {
+      const b = this.buildings.get(this.selectedBuildingId);
+      if (b && b.team === 'player' && !b.underConstruction) {
+        b.rallyPoint = point.clone();
+        this.spawnMoveMarker(point, 0x33aaff);
+      }
+    }
+  }
 
   private updateNDC(e: MouseEvent) {
     const rect = this.renderer.domElement.getBoundingClientRect();
@@ -2040,7 +2237,7 @@ export class GameEngine {
   // --------------------------------------------------------------------------
   // Drag box visual (called by React layer via getDragBox)
   // --------------------------------------------------------------------------
-  getDragBox() { return this.dragBox; }
+  getDragBox() { return this.dragBox || this.touchDragBox; }
 
   // --------------------------------------------------------------------------
   // Resize

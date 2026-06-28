@@ -259,6 +259,10 @@ export function buildTerrain(scene: THREE.Scene, seed = 1337): TerrainData {
   mesh.receiveShadow = true;
   mesh.castShadow = false;
   mesh.name = 'terrain';
+  // Disable frustum culling — the heightmap displacement can make the
+  // auto-computed bounding sphere inaccurate, causing the terrain to be
+  // incorrectly culled from view.
+  mesh.frustumCulled = false;
   scene.add(mesh);
 
   // Water plane at y = waterLevel
@@ -274,6 +278,7 @@ export function buildTerrain(scene: THREE.Scene, seed = 1337): TerrainData {
     envMapIntensity: 1.0,
   });
   const waterMesh = new THREE.Mesh(waterGeo, waterMat);
+  waterMesh.frustumCulled = false;
   waterMesh.position.y = waterLevel;
   waterMesh.receiveShadow = true;
   scene.add(waterMesh);
@@ -309,8 +314,10 @@ export function buildTerrain(scene: THREE.Scene, seed = 1337): TerrainData {
   // Decorative scattered rocks (low-poly)
   const terrainGroup = new THREE.Group();
   terrainGroup.name = 'terrainGroup';
-  terrainGroup.add(mesh);
-  terrainGroup.add(waterMesh);
+  // Note: mesh and waterMesh are already added to the scene above.
+  // Don't reparent them into terrainGroup (that would remove them from the scene).
+  // terrainGroup is kept for potential future use but stays empty.
+  scene.add(terrainGroup);
 
   return {
     mesh,

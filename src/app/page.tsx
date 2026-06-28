@@ -49,6 +49,19 @@ export default function Home() {
   } | null>(null);
   const [minimapTick, setMinimapTick] = useState(0);
   const [showHelp, setShowHelp] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [showBuildPanel, setShowBuildPanel] = useState(false);
+
+  // Detect mobile / small screen
+  useEffect(() => {
+    const check = () => {
+      const mobile = window.innerWidth < 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      setIsMobile(mobile);
+    };
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
 
   // Toast / log helper
   const log = useCallback((msg: string) => {
@@ -321,33 +334,34 @@ export default function Home() {
       {/* Drag box */}
       {renderDragBox()}
 
-      {/* === TOP BAR: Resources === */}
+      {/* === TOP BAR: Resources (responsive) === */}
       <div style={{
         position: 'absolute', top: 0, left: 0, right: 0,
-        display: 'flex', alignItems: 'center', gap: '1.5rem',
-        padding: '0.5rem 1rem',
+        display: 'flex', alignItems: 'center', gap: isMobile ? '0.6rem' : '1.5rem',
+        padding: isMobile ? '0.35rem 0.5rem' : '0.5rem 1rem',
         background: 'linear-gradient(180deg, rgba(20, 28, 40, 0.95) 0%, rgba(20, 28, 40, 0.7) 100%)',
         borderBottom: '2px solid #4f8cff',
         color: '#e8eef5',
-        fontSize: '14px',
+        fontSize: isMobile ? '11px' : '14px',
         zIndex: 20,
         pointerEvents: 'auto',
+        flexWrap: 'wrap',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}>
           <span style={{ color: '#7ec050' }}>&#9728;</span>
-          <span>Wood: {resources.wood}</span>
+          <span>{isMobile ? '' : 'Wood: '}{resources.wood}</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}>
           <span style={{ color: '#e67e22' }}>&#9774;</span>
-          <span>Food: {resources.food}</span>
+          <span>{isMobile ? '' : 'Food: '}{resources.food}</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}>
           <span style={{ color: '#f1c40f' }}>&#9733;</span>
-          <span>Gold: {resources.gold}</span>
+          <span>{isMobile ? '' : 'Gold: '}{resources.gold}</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}>
           <span style={{ color: '#9b59b6' }}>&#9794;</span>
-          <span>Pop: {resources.pop}/{resources.popCap}</span>
+          <span>{resources.pop}/{resources.popCap}</span>
         </div>
         <div style={{ flex: 1 }} />
         <div style={{
@@ -406,13 +420,13 @@ export default function Home() {
         </button>
       </div>
 
-      {/* === MINIMAP (bottom-right) === */}
+      {/* === MINIMAP (bottom-right, responsive) === */}
       <div style={{
         position: 'absolute',
-        bottom: '0.5rem',
+        bottom: isMobile ? '3.5rem' : '0.5rem',
         right: '0.5rem',
-        width: '220px',
-        height: '220px',
+        width: isMobile ? '120px' : '220px',
+        height: isMobile ? '120px' : '220px',
         border: '2px solid #4f8cff',
         background: '#0a1018',
         zIndex: 20,
@@ -420,28 +434,40 @@ export default function Home() {
       }}>
         <canvas
           ref={minimapRef}
-          width={220}
-          height={220}
+          width={isMobile ? 120 : 220}
+          height={isMobile ? 120 : 220}
           onClick={handleMinimapClick}
+          onTouchStart={(e) => {
+            const t = e.touches[0];
+            const rect = e.currentTarget.getBoundingClientRect();
+            const mx = (t.clientX - rect.left) / rect.width;
+            const mz = (t.clientY - rect.top) / rect.height;
+            const MAP_SIZE = 360;
+            const wx = mx * MAP_SIZE - MAP_SIZE / 2;
+            const wz = mz * MAP_SIZE - MAP_SIZE / 2;
+            engineRef.current?.panToMinimapPoint(wx, wz);
+          }}
           style={{ width: '100%', height: '100%', cursor: 'pointer', display: 'block' }}
         />
       </div>
 
-      {/* === SELECTION PANEL (bottom-left) === */}
+      {/* === SELECTION PANEL (bottom-left, responsive) === */}
       <div style={{
         position: 'absolute',
-        bottom: '0.5rem',
+        bottom: isMobile ? '3.5rem' : '0.5rem',
         left: '0.5rem',
-        minWidth: '260px',
-        maxWidth: '320px',
+        minWidth: isMobile ? '140px' : '220px',
+        maxWidth: isMobile ? '200px' : '300px',
         background: 'rgba(20, 28, 40, 0.92)',
         border: '2px solid #4f8cff',
         borderRadius: '6px',
-        padding: '0.6rem 0.8rem',
+        padding: isMobile ? '0.4rem 0.5rem' : '0.6rem 0.8rem',
         color: '#e8eef5',
-        fontSize: '13px',
+        fontSize: isMobile ? '10px' : '13px',
         zIndex: 20,
         boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+        maxHeight: isMobile ? '40vh' : '50vh',
+        overflowY: 'auto',
       }}>
         {selectedUnitsData ? (
           <div>
@@ -548,21 +574,48 @@ export default function Home() {
         )}
       </div>
 
-      {/* === BUILD / TRAIN BAR (bottom-center) === */}
+      {/* === BUILD/TRAIN toggle button (mobile only) === */}
+      {isMobile && !selectedBuildingData && !selectedUnitsData && (
+        <button
+          onClick={() => setShowBuildPanel(s => !s)}
+          style={{
+            position: 'absolute',
+            bottom: '0.5rem',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            padding: '0.5rem 1.5rem',
+            background: showBuildPanel ? '#4f8cff' : '#2c4060',
+            color: '#fff',
+            border: '2px solid #4f8cff',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            fontWeight: 700,
+            fontSize: '14px',
+            zIndex: 21,
+            pointerEvents: 'auto',
+          }}
+        >
+          {showBuildPanel ? '✕ Close' : '🔨 Build'}
+        </button>
+      )}
+
+      {/* === BUILD / TRAIN BAR (bottom-center, responsive) === */}
+      {(!isMobile || showBuildPanel || selectedBuildingData || selectedUnitsData) && (
       <div style={{
         position: 'absolute',
         bottom: '0.5rem',
-        left: '50%',
-        transform: 'translateX(-50%)',
+        left: isMobile ? '0.5rem' : '50%',
+        right: isMobile ? '130px' : 'auto',
+        transform: isMobile ? 'none' : 'translateX(-50%)',
         display: 'flex',
-        gap: '0.4rem',
-        padding: '0.4rem 0.6rem',
-        background: 'rgba(20, 28, 40, 0.92)',
+        gap: '0.3rem',
+        padding: isMobile ? '0.3rem 0.4rem' : '0.4rem 0.6rem',
+        background: 'rgba(20, 28, 40, 0.95)',
         border: '2px solid #4f8cff',
         borderRadius: '6px',
         color: '#e8eef5',
         zIndex: 20,
-        maxWidth: 'calc(100vw - 540px)',
+        maxWidth: isMobile ? 'calc(100vw - 145px)' : 'calc(100vw - 540px)',
         overflowX: 'auto',
         boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
       }}>
@@ -585,14 +638,15 @@ export default function Home() {
                 title={`${stats.label}\nCost: ${stats.cost.wood || 0}w ${stats.cost.food || 0}f ${stats.cost.gold || 0}g\nPop: ${stats.popCost}\nHP: ${stats.hp}  DMG: ${stats.damage}\nRequires: ${AGE_INFO[stats.age].label}`}
                 style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'center',
-                  padding: '0.4rem 0.5rem',
+                  padding: isMobile ? '0.5rem 0.4rem' : '0.4rem 0.5rem',
                   background: disabled ? '#1a2530' : '#2c4060',
                   color: disabled ? '#5a6878' : '#fff',
                   border: `1px solid ${disabled ? '#2a3848' : '#4f8cff'}`,
                   borderRadius: '4px',
                   cursor: disabled ? 'not-allowed' : 'pointer',
-                  minWidth: '76px',
-                  fontSize: '11px',
+                  minWidth: isMobile ? '56px' : '76px',
+                  minHeight: isMobile ? '44px' : 'auto',
+                  fontSize: isMobile ? '9px' : '11px',
                 }}
               >
                 <div style={{ fontWeight: 700, fontSize: '11px' }}>{stats.label}</div>
@@ -626,14 +680,15 @@ export default function Home() {
                 title={`${stats.label}\nCost: ${stats.cost.wood || 0}w ${stats.cost.food || 0}f ${stats.cost.gold || 0}g\nHP: ${stats.hp}\nRequires: ${AGE_INFO[stats.age].label}${stats.popProvided ? `\n+${stats.popProvided} pop` : ''}`}
                 style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'center',
-                  padding: '0.4rem 0.5rem',
+                  padding: isMobile ? '0.5rem 0.4rem' : '0.4rem 0.5rem',
                   background: isPlacing ? '#4f8cff' : (disabled ? '#1a2530' : '#2c4060'),
                   color: disabled ? '#5a6878' : '#fff',
                   border: `1px solid ${isPlacing ? '#88ccff' : (disabled ? '#2a3848' : '#4f8cff')}`,
                   borderRadius: '4px',
                   cursor: disabled ? 'not-allowed' : 'pointer',
-                  minWidth: '76px',
-                  fontSize: '11px',
+                  minWidth: isMobile ? '56px' : '76px',
+                  minHeight: isMobile ? '44px' : 'auto',
+                  fontSize: isMobile ? '9px' : '11px',
                 }}
               >
                 <div style={{ fontWeight: 700, fontSize: '11px' }}>{stats.label}</div>
@@ -656,6 +711,7 @@ export default function Home() {
           </div>
         )}
       </div>
+      )}
 
       {/* === LOG TOASTS (top-right under top bar) === */}
       <div style={{
@@ -701,37 +757,50 @@ export default function Home() {
           <div style={{ fontWeight: 700, fontSize: '18px', marginBottom: '0.8rem', color: '#88ccff' }}>
             How to Play
           </div>
-          <div style={{ fontSize: '13px', lineHeight: 1.6 }}>
-            <div><b>Camera:</b></div>
-            <div style={{ marginLeft: '1rem', marginBottom: '0.4rem' }}>
-              WASD / Arrows / Edge-pan to move<br />
-              Scroll wheel to zoom<br />
-              Q/E or middle-drag to rotate
-            </div>
-            <div><b>Selection:</b></div>
-            <div style={{ marginLeft: '1rem', marginBottom: '0.4rem' }}>
-              Left-click to select a unit/building<br />
-              Drag left-click to box-select units<br />
-              Click empty ground to deselect
-            </div>
-            <div><b>Commands:</b></div>
-            <div style={{ marginLeft: '1rem', marginBottom: '0.4rem' }}>
-              Right-click ground = move<br />
-              Right-click resource = gather (villager)<br />
-              Right-click enemy = attack<br />
-              Right-click friendly building under construction = build (villager)<br />
-              Right-click friendly production building = set rally point
-            </div>
+          <div style={{ fontSize: isMobile ? '12px' : '13px', lineHeight: 1.6 }}>
+            {isMobile ? (
+              <>
+                <div><b>📱 Mobile Controls:</b></div>
+                <div style={{ marginLeft: '1rem', marginBottom: '0.4rem' }}>
+                  <b>One finger:</b> tap = select, drag = box-select, long-press = command (move/gather/attack)<br />
+                  <b>Two fingers:</b> drag = pan camera, pinch = zoom, twist = rotate<br />
+                  <b>Minimap:</b> tap to jump camera<br />
+                  <b>Build button:</b> tap 🔨 Build at bottom to open build menu, tap a building, then tap valid ground (green)
+                </div>
+              </>
+            ) : (
+              <>
+                <div><b>Camera:</b></div>
+                <div style={{ marginLeft: '1rem', marginBottom: '0.4rem' }}>
+                  WASD / Arrows / Edge-pan to move<br />
+                  Scroll wheel to zoom<br />
+                  Q/E or middle-drag to rotate
+                </div>
+                <div><b>Selection:</b></div>
+                <div style={{ marginLeft: '1rem', marginBottom: '0.4rem' }}>
+                  Left-click to select a unit/building<br />
+                  Drag left-click to box-select units<br />
+                  Click empty ground to deselect
+                </div>
+                <div><b>Commands:</b></div>
+                <div style={{ marginLeft: '1rem', marginBottom: '0.4rem' }}>
+                  Right-click ground = move<br />
+                  Right-click resource = gather (villager)<br />
+                  Right-click enemy = attack<br />
+                  Right-click friendly building under construction = build (villager)<br />
+                  Right-click friendly production building = set rally point
+                </div>
+              </>
+            )}
             <div><b>Building:</b></div>
             <div style={{ marginLeft: '1rem', marginBottom: '0.4rem' }}>
-              Deselect everything to see the build bar at the bottom.<br />
-              Click a building, then left-click on valid ground (green ghost) to place.<br />
-              ESC cancels placement.<br />
+              {isMobile ? 'Tap 🔨 Build, choose a building, then tap valid ground (green ghost).' : 'Deselect everything to see the build bar at the bottom.'}<br />
+              {isMobile ? 'Tap elsewhere or pick another building to cancel.' : 'Click a building, then left-click on valid ground (green ghost) to place. ESC cancels.'}<br />
               Idle villagers auto-assist construction.
             </div>
             <div><b>Ages:</b></div>
             <div style={{ marginLeft: '1rem', marginBottom: '0.4rem' }}>
-              Click "Advance to ..." in the top bar when you can afford it.<br />
+              Tap "Advance to ..." in the top bar when you can afford it.<br />
               Higher ages unlock stronger units and buildings.
             </div>
             <div><b>Win/Lose:</b></div>

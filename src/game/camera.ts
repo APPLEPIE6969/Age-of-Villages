@@ -1,6 +1,7 @@
 // ============================================================================
 // RTS Camera: orbit-around-focal-point on the terrain.
-// WASD/arrows pan, scroll zoom, Q/E rotate, edge-pan, middle-drag rotate.
+// Desktop: WASD/arrows pan, scroll zoom, Q/E rotate, edge-pan, middle-drag rotate.
+// Mobile: one-finger handled by engine (select/box), two-finger pan+pinch+rotate.
 // Pitch is clamped to a RTS-friendly range. Distance zoom (not FOV).
 // ============================================================================
 
@@ -11,10 +12,10 @@ export class CameraRig {
   camera: THREE.PerspectiveCamera;
   focal = new THREE.Vector3(0, 0, 0);
   yaw = 0;
-  pitch = 0.95;   // radians (0 = horizon, PI/2 = top-down)
-  distance = 50;
-  minDist = 18;
-  maxDist = 110;
+  pitch = 1.0;   // radians (0 = horizon, PI/2 = top-down)
+  distance = 40;
+  minDist = 15;
+  maxDist = 150;
   minPitch = 0.5;
   maxPitch = 1.35;
   panSpeed = 0.9;
@@ -30,6 +31,12 @@ export class CameraRig {
   private getHeightAt: (x: number, z: number) => number;
   private dom: HTMLElement;
   private enabled = true;
+
+  // Touch state
+  private touchMode: 'none' | 'pan' | 'pinch' = 'none';
+  private touchLastDist = 0;
+  private touchLastCenter = { x: 0, y: 0 };
+  private touchLastAngle = 0;
 
   constructor(
     camera: THREE.PerspectiveCamera,
@@ -56,6 +63,11 @@ export class CameraRig {
     this.dom.addEventListener('mousedown', this.onMouseDown);
     window.addEventListener('mouseup', this.onMouseUp);
     this.dom.addEventListener('contextmenu', this.onContext);
+    // Touch events (passive:false so we can preventDefault)
+    this.dom.addEventListener('touchstart', this.onTouchStart, { passive: false });
+    this.dom.addEventListener('touchmove', this.onTouchMove, { passive: false });
+    this.dom.addEventListener('touchend', this.onTouchEnd, { passive: false });
+    this.dom.addEventListener('touchcancel', this.onTouchEnd, { passive: false });
   }
 
   detach() {
@@ -66,6 +78,10 @@ export class CameraRig {
     this.dom.removeEventListener('mousedown', this.onMouseDown);
     window.removeEventListener('mouseup', this.onMouseUp);
     this.dom.removeEventListener('contextmenu', this.onContext);
+    this.dom.removeEventListener('touchstart', this.onTouchStart);
+    this.dom.removeEventListener('touchmove', this.onTouchMove);
+    this.dom.removeEventListener('touchend', this.onTouchEnd);
+    this.dom.removeEventListener('touchcancel', this.onTouchEnd);
   }
 
   private onContext = (e: Event) => e.preventDefault();
@@ -118,6 +134,72 @@ export class CameraRig {
     this.update();
   };
 
+  // --------------------------------------------------------------------------
+  // TOUCH — two-finger pan + pinch-zoom + twist-rotate
+  // One-finger touch is handled by the engine (for selection / box-select).
+  // --------------------------------------------------------------------------
+  isTwoFingerGesture(): boolean {
+    return this.touchMode !== 'none';
+  }
+
+  private onTouchStart = (e: TouchEvent) => {
+    if (!this.enabled) return;
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      this.touchMode = 'pan';
+      const t0 = e.touches[0], t1 = e.touches[1];
+      this.touchLastDist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+      this.touchLastCenter = {
+        x: (t0.clientX + t1.clientX) / 2,
+        y: (t0.clientY + t1.clientY) / 2,
+      };
+      this.touchLastAngle = Math.atan2(t1.clientY - t0.clientY, t1.clientX - t0.clientX);
+    }
+  };
+
+  private onTouchMove = (e: TouchEvent) => {
+    if (!this.enabled) return;
+    if (e.touches.length === 2 && this.touchMode === 'pan') {
+      e.preventDefault();
+      const t0 = e.touches[0], t1 = e.touches[1];
+      const cx = (t0.clientX + t1.clientX) / 2;
+      const cy = (t0.clientY + t1.clientY) / 2;
+      const dist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+      const angle = Math.atan2(t1.clientY - t0.clientY, t1.clientX - t0.clientX);
+
+      // Pan: move focal opposite to finger movement (screen drag)
+      const dx = cx - this.touchLastCenter.x;
+      const dy = cy - this.touchLastCenter.y;
+      const panAmt = this.panSpeed * (this.distance / 30) * 0.6;
+      this.panByScreen(-dx * panAmt * 0.05, -dy * panAmt * 0.05);
+
+      // Pinch zoom
+      if (this.touchLastDist > 0) {
+        const scale = dist / this.touchLastDist;
+        this.distance = THREE.MathUtils.clamp(
+          this.distance / scale,
+          this.minDist,
+          this.maxDist,
+        );
+      }
+
+      // Twist rotate
+      const dAngle = angle - this.touchLastAngle;
+      this.yaw += dAngle;
+
+      this.touchLastDist = dist;
+      this.touchLastCenter = { x: cx, y: cy };
+      this.touchLastAngle = angle;
+      this.update();
+    }
+  };
+
+  private onTouchEnd = (e: TouchEvent) => {
+    if (e.touches.length < 2) {
+      this.touchMode = 'none';
+    }
+  };
+
   panByScreen(dx: number, dz: number) {
     // Pan in screen space relative to current yaw
     const forward = new THREE.Vector3(
@@ -162,6 +244,8 @@ export class CameraRig {
 
   tick(dt: number) {
     if (!this.enabled) return;
+    // Skip keyboard/edge-pan while a two-finger touch gesture is active
+    if (this.touchMode !== 'none') return;
     // Keyboard pan
     let dx = 0, dz = 0;
     if (this.keys['w'] || this.keys['arrowup']) dz -= 1;
@@ -170,7 +254,7 @@ export class CameraRig {
     if (this.keys['d'] || this.keys['arrowright']) dx += 1;
     if (this.keys['q']) this.yaw += this.rotateSpeed * 60 * dt;
     if (this.keys['e']) this.yaw -= this.rotateSpeed * 60 * dt;
-    // Edge pan (when mouse inside the canvas region)
+    // Edge pan (when mouse inside the canvas region) — desktop only
     if (this.mouse.inside) {
       const w = window.innerWidth;
       const h = window.innerHeight;
