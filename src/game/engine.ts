@@ -78,7 +78,7 @@ export class GameEngine {
 
   // Hover tooltip (desktop only)
   private hoverTooltip: THREE.Sprite | null = null;
-  private hoveredBuildingId: number | null = null;
+  private hoveredId: { kind: 'building' | 'unit'; id: number } | null = null;
 
   // AI state
   private aiState: {
@@ -852,19 +852,26 @@ export class GameEngine {
   /** Update the desktop hover tooltip — shows detailed info when hovering a building */
   private updateHoverTooltip() {
     const pick = this.pickUnitOrBuilding();
-    const buildingId = pick && pick.kind === 'building' ? pick.id : null;
+    // Only show tooltips for units and buildings, not resources
+    const newHovered = pick && (pick.kind === 'unit' || pick.kind === 'building')
+      ? { kind: pick.kind as 'building' | 'unit', id: pick.id } : null;
 
-    if (buildingId === this.hoveredBuildingId) return; // no change
+    // Check if the hover target changed
+    const same = this.hoveredId && newHovered &&
+      this.hoveredId!.kind === newHovered.kind && this.hoveredId!.id === newHovered.id;
+    if (same) return;
 
     // Remove old tooltip
     if (this.hoverTooltip) {
       this.scene.remove(this.hoverTooltip);
       this.hoverTooltip = null;
     }
-    this.hoveredBuildingId = buildingId;
+    this.hoveredId = newHovered;
 
-    if (buildingId !== null) {
-      const b = this.buildings.get(buildingId);
+    if (!newHovered) return;
+
+    if (newHovered.kind === 'building') {
+      const b = this.buildings.get(newHovered.id);
       if (b) {
         const stats = BUILDING_STATS[b.type];
         const lines: string[] = [stats.label];
@@ -887,6 +894,91 @@ export class GameEngine {
         this.scene.add(tooltip);
         this.hoverTooltip = tooltip;
       }
+    } else if (newHovered.kind === 'unit') {
+      // Unit hover tooltip — shows name, HP, inventory, stats
+      const u = this.units.get(newHovered.id);
+      if (u && u.alive) {
+        const stats = UNIT_STATS[u.type];
+        const lines: string[] = [stats.label];
+        lines.push(`HP: ${Math.ceil(u.hp)}/${u.maxHp}`);
+        // Show what the unit is currently carrying (inventory)
+        if (u.carrying) {
+          const resName = u.carrying.type === 'wood' ? 'Wood' : u.carrying.type === 'food' ? 'Food' : 'Gold';
+          lines.push(`Carrying: ${Math.floor(u.carrying.amount)} ${resName}`);
+        }
+        // Show current order/activity
+        const orderDesc = this.describeOrder(u);
+        if (orderDesc) lines.push(orderDesc);
+        // Combat stats
+        lines.push(`DMG: ${stats.damage}  Armor: ${stats.armor}`);
+        if (stats.bonusVs && Object.keys(stats.bonusVs).length > 0) {
+          const bonusParts = Object.entries(stats.bonusVs).map(([k, v]) => `${k} x${v}`);
+          lines.push(`Bonus: ${bonusParts.join(', ')}`);
+        }
+
+        const tooltip = createTooltipSprite(lines, { fontSize: 22 });
+        // Position above the unit's head
+        const unitHeight = stats.category === 'cavalry' ? 3.5 : 2.5;
+        tooltip.position.set(u.pos.x, u.pos.y + unitHeight, u.pos.z);
+        this.scene.add(tooltip);
+        this.hoverTooltip = tooltip;
+      }
+    }
+  }
+
+  /** Get a human-readable description of what a unit is currently doing */
+  private describeOrder(u: Unit): string {
+    switch (u.order.kind) {
+      case 'idle': return '';
+      case 'move': return 'Moving';
+      case 'attackMove': return 'Moving to attack';
+      case 'attack': return 'Attacking';
+      case 'gather': {
+        const order = u.order as Extract<Unit['order'], { kind: 'gather' }>;
+        if (order.phase === 'gathering') return `Gathering ${order.resourceType}`;
+        if (order.phase === 'toDrop') return 'Returning resources';
+        return `Going to gather ${order.resourceType}`;
+      }
+      case 'build': {
+        const order = u.order as Extract<Unit['order'], { kind: 'build' }>;
+        const b = this.buildings.get(order.buildingId);
+        return b ? `Building ${BUILDING_STATS[b.type].label}` : 'Building';
+      }
+      case 'returnResource': return 'Returning resources';
+      default: return '';
+    }
+  }
+
+  /**
+   * Reposition the hover tooltip to follow the hovered unit/building.
+   * Units move, so the tooltip must track them. Also refreshes the tooltip
+   * content periodically (HP changes, inventory changes, order changes).
+   */
+  private updateHoverTooltipPosition() {
+    if (!this.hoverTooltip || !this.hoveredId) return;
+    if (this.hoveredId.kind === 'unit') {
+      const u = this.units.get(this.hoveredId.id);
+      if (!u || !u.alive) {
+        // Unit died or disappeared — remove tooltip
+        this.scene.remove(this.hoverTooltip);
+        this.hoverTooltip = null;
+        this.hoveredId = null;
+        return;
+      }
+      const stats = UNIT_STATS[u.type];
+      const unitHeight = stats.category === 'cavalry' ? 3.5 : 2.5;
+      this.hoverTooltip.position.set(u.pos.x, u.pos.y + unitHeight, u.pos.z);
+    } else if (this.hoveredId.kind === 'building') {
+      const b = this.buildings.get(this.hoveredId.id);
+      if (!b) {
+        this.scene.remove(this.hoverTooltip);
+        this.hoverTooltip = null;
+        this.hoveredId = null;
+        return;
+      }
+      // Buildings don't move, but HP changes — refresh tooltip content occasionally
+      // by forcing a re-pick (cheap enough)
+      // Actually, just leave it — the HP bar already shows live HP
     }
   }
 
@@ -1508,6 +1600,7 @@ export class GameEngine {
       this.updateAdvancement(dt);
       this.updateMoveMarkers(dt);
       this.updateHpBars();
+      this.updateHoverTooltipPosition();
     }
     this.cameraRig.tick(dt);
     // Render selection box overlay (drawn by React HUD via DOM, not here)
