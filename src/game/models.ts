@@ -90,45 +90,68 @@ export function buildUnitMesh(type: UnitType, team: 'player' | 'enemy'): THREE.G
 
   // Base body parts used by most units
   const makeBody = (scale = 1) => {
-    // Legs
+    // Legs — pivot at hip (top of leg) so they can swing
+    // We do this by creating a pivot Group at the hip, adding the leg mesh offset downward
+    const legLPivot = new THREE.Group();
+    legLPivot.position.set(-0.13 * scale, 0.55 * scale, 0);
     const legL = new THREE.Mesh(cylGeo(0.12 * scale, 0.14 * scale, 0.55 * scale, 6), clothMat);
-    legL.position.set(-0.13 * scale, 0.28 * scale, 0);
+    legL.position.y = -0.275 * scale; // half leg height below pivot
+    legLPivot.add(legL);
+    legLPivot.name = 'legL';
+
+    const legRPivot = new THREE.Group();
+    legRPivot.position.set(0.13 * scale, 0.55 * scale, 0);
     const legR = new THREE.Mesh(cylGeo(0.12 * scale, 0.14 * scale, 0.55 * scale, 6), clothMat);
-    legR.position.set(0.13 * scale, 0.28 * scale, 0);
+    legR.position.y = -0.275 * scale;
+    legRPivot.add(legR);
+    legRPivot.name = 'legR';
+
     // Torso
     const torso = new THREE.Mesh(cylGeo(0.30 * scale, 0.34 * scale, 0.55 * scale, 8), teamClothMat);
     torso.position.y = 0.83 * scale;
     // Head
     const head = new THREE.Mesh(sphGeo(0.18 * scale, 8), skinMat);
     head.position.y = 1.25 * scale;
-    // Arms
+    // Arms — pivot at shoulder (top of arm) so they can swing
+    const armLPivot = new THREE.Group();
+    armLPivot.position.set(-0.35 * scale, 1.05 * scale, 0);
+    armLPivot.rotation.z = 0.2;
     const armL = new THREE.Mesh(cylGeo(0.09 * scale, 0.11 * scale, 0.5 * scale, 6), skinMat);
-    armL.position.set(-0.35 * scale, 0.85 * scale, 0);
-    armL.rotation.z = 0.2;
+    armL.position.y = -0.25 * scale;
+    armLPivot.add(armL);
+    armLPivot.name = 'armL';
+
+    const armRPivot = new THREE.Group();
+    armRPivot.position.set(0.35 * scale, 1.05 * scale, 0);
+    armRPivot.rotation.z = -0.2;
     const armR = new THREE.Mesh(cylGeo(0.09 * scale, 0.11 * scale, 0.5 * scale, 6), skinMat);
-    armR.position.set(0.35 * scale, 0.85 * scale, 0);
-    armR.rotation.z = -0.2;
+    armR.position.y = -0.25 * scale;
+    armRPivot.add(armR);
+    armRPivot.name = 'armR';
+
     [legL, legR, torso, head, armL, armR].forEach(m => {
       m.castShadow = true; m.receiveShadow = false;
     });
     const grp = new THREE.Group();
-    grp.add(legL, legR, torso, head, armL, armR);
-    return { grp, armL, armR, legL, legR, torso, head };
+    grp.add(legLPivot, legRPivot, torso, head, armLPivot, armRPivot);
+    return { grp, armL: armLPivot, armR: armRPivot, legL: legLPivot, legR: legRPivot, torso, head };
   };
 
   switch (type) {
     case 'villager': {
       const b = makeBody(1);
-      // Tool: a wooden hoe/axe
+      // Tool: a wooden hoe/axe — attach to right hand (armR pivot)
       const tool = new THREE.Mesh(boxGeo(0.05, 0.7, 0.05), woodMat);
-      tool.position.set(0.45, 0.7, 0.1);
+      tool.position.set(0, -0.35, 0.1);
       tool.rotation.z = -0.3;
       tool.castShadow = true;
+      tool.name = 'tool';
+      b.armR.add(tool);
       // Sack on back
       const sack = new THREE.Mesh(sphGeo(0.2, 6), clothMat);
       sack.position.set(0, 1.0, -0.25);
       sack.castShadow = true;
-      g.add(b.grp, tool, sack);
+      g.add(b.grp, sack);
       break;
     }
     case 'militia':
@@ -172,7 +195,20 @@ export function buildUnitMesh(type: UnitType, team: 'player' | 'enemy'): THREE.G
       rim.rotation.x = Math.PI / 2;
       rim.position.copy(shield.position);
       rim.position.y += 0;
-      g.add(b.grp, helmet, blade, guard, handle, shield, rim);
+      // Attach sword to right hand (armR pivot)
+      // Group the blade+guard+handle so they move together as the weapon
+      const swordGroup = new THREE.Group();
+      swordGroup.name = 'tool';
+      blade.position.set(0, -bladeLen * 0.5, 0.1);
+      blade.rotation.z = 0;
+      guard.position.set(0, 0, 0.1);
+      handle.position.set(0.05, 0.1, 0.1);
+      handle.rotation.z = Math.PI / 2;
+      swordGroup.add(blade, guard, handle);
+      swordGroup.position.set(0, -0.25, 0); // hand position relative to shoulder pivot
+      swordGroup.rotation.z = -0.5; // angled grip
+      b.armR.add(swordGroup);
+      g.add(b.grp, helmet, shield, rim);
       break;
     }
     case 'archer':
@@ -183,20 +219,22 @@ export function buildUnitMesh(type: UnitType, team: 'player' | 'enemy'): THREE.G
       const hood = new THREE.Mesh(coneGeo(0.22, 0.32, 8), clothMat);
       hood.position.y = 1.32;
       hood.castShadow = true;
-      // Bow
+      // Bow — attach to left hand (armL pivot)
       const bow = new THREE.Mesh(
         new THREE.TorusGeometry(0.35, 0.025, 6, 12, Math.PI * 1.2),
         woodMat
       );
-      bow.position.set(0.4, 0.9, 0.15);
+      bow.position.set(0, -0.3, 0.1);
       bow.rotation.z = -Math.PI / 2;
       bow.castShadow = true;
+      bow.name = 'tool';
+      b.armL.add(bow);
       // Quiver on back
       const quiver = new THREE.Mesh(cylGeo(0.08, 0.1, 0.35, 6), darkMat);
       quiver.position.set(-0.15, 1.0, -0.2);
       quiver.rotation.x = -0.3;
       quiver.castShadow = true;
-      g.add(b.grp, hood, bow, quiver);
+      g.add(b.grp, hood, quiver);
       break;
     }
     case 'scout':

@@ -19,7 +19,9 @@ export const metadata: Metadata = {
   keywords: ["RTS", "Age of Empires", "Three.js", "Next.js", "strategy game", "browser game"],
   authors: [{ name: "APPLEPIE6969" }],
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: '/favicon.svg',
+    shortcut: '/favicon.svg',
+    apple: '/favicon.svg',
   },
   openGraph: {
     title: "Age of Villages — Browser RTS",

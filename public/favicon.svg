@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4a7fb5"/>
+      <stop offset="1" stop-color="#6a9fc5"/>
+    </linearGradient>
+    <linearGradient id="grass" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a6b2e"/>
+      <stop offset="1" stop-color="#2a5a1e"/>
+    </linearGradient>
+    <linearGradient id="stone" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#a8a098"/>
+      <stop offset="1" stop-color="#787068"/>
+    </linearGradient>
+    <linearGradient id="roof" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8a5a2a"/>
+      <stop offset="1" stop-color="#6a4a1a"/>
+    </linearGradient>
+  </defs>
+  <!-- Background: rounded square with sky -->
+  <rect width="64" height="64" rx="12" fill="url(#sky)"/>
+  <!-- Ground -->
+  <path d="M 0 44 L 64 44 L 64 64 L 0 64 Z" fill="url(#grass)"/>
+  <!-- Distant hills -->
+  <path d="M 0 44 Q 16 38 32 42 Q 48 38 64 44 L 64 48 L 0 48 Z" fill="#2a5a1e" opacity="0.6"/>
+  <!-- Castle/Town Center -->
+  <!-- Stone base -->
+  <rect x="18" y="28" width="28" height="18" fill="url(#stone)" rx="1"/>
+  <!-- Stone block lines -->
+  <line x1="18" y1="34" x2="46" y2="34" stroke="#5a5248" stroke-width="0.5" opacity="0.4"/>
+  <line x1="18" y1="40" x2="46" y2="40" stroke="#5a5248" stroke-width="0.5" opacity="0.4"/>
+  <line x1="32" y1="28" x2="32" y2="46" stroke="#5a5248" stroke-width="0.5" opacity="0.4"/>
+  <!-- Wood door -->
+  <rect x="28" y="36" width="8" height="10" fill="#5a3a1a" rx="0.5"/>
+  <circle cx="34" cy="41" r="0.6" fill="#d4af37"/>
+  <!-- Wood second floor -->
+  <rect x="20" y="22" width="24" height="8" fill="#6a4a2a"/>
+  <!-- Wood plank lines -->
+  <line x1="26" y1="22" x2="26" y2="30" stroke="#4a3318" stroke-width="0.4"/>
+  <line x1="32" y1="22" x2="32" y2="30" stroke="#4a3318" stroke-width="0.4"/>
+  <line x1="38" y1="22" x2="38" y2="30" stroke="#4a3318" stroke-width="0.4"/>
+  <!-- Thatch roof -->
+  <path d="M 16 22 L 32 12 L 48 22 Z" fill="url(#roof)"/>
+  <!-- Roof texture lines -->
+  <line x1="20" y1="19" x2="32" y2="13" stroke="#5a3a1a" stroke-width="0.5" opacity="0.5"/>
+  <line x1="32" y1="13" x2="44" y2="19" stroke="#5a3a1a" stroke-width="0.5" opacity="0.5"/>
+  <line x1="24" y1="16" x2="32" y2="13" stroke="#5a3a1a" stroke-width="0.5" opacity="0.4"/>
+  <line x1="32" y1="13" x2="40" y2="16" stroke="#5a3a1a" stroke-width="0.5" opacity="0.4"/>
+  <!-- Tower battlement -->
+  <rect x="16" y="20" width="4" height="4" fill="url(#stone)"/>
+  <rect x="44" y="20" width="4" height="4" fill="url(#stone)"/>
+  <!-- Banner pole -->
+  <line x1="48" y1="22" x2="48" y2="14" stroke="#3a2a1a" stroke-width="0.8"/>
+  <!-- Blue banner (player team color) -->
+  <path d="M 48 14 L 54 15 L 52 18 L 54 21 L 48 20 Z" fill="#4f8cff"/>
+  <!-- Sun -->
+  <circle cx="50" cy="12" r="4" fill="#f5e6a8" opacity="0.9"/>
+  <circle cx="50" cy="12" r="6" fill="#f5e6a8" opacity="0.2"/>
+  <!-- Small tree -->
+  <rect x="8" y="40" width="1.5" height="5" fill="#4a3018"/>
+  <circle cx="8.5" cy="38" r="3.5" fill="#2a5a1e"/>
+  <circle cx="7" cy="37" r="2" fill="#3a6b2e"/>
+  <!-- Another tree -->
+  <rect x="54" y="42" width="1.5" height="4" fill="#4a3018"/>
+  <circle cx="54.5" cy="40" r="3" fill="#2a5a1e"/>
+</svg>

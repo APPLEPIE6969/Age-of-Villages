@@ -59,6 +59,7 @@ export default function Home() {
     const check = () => {
       const mobile = window.innerWidth < 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
       setIsMobile(mobile);
+      if (engineRef.current) engineRef.current.isMobile = mobile;
     };
     check();
     window.addEventListener('resize', check);
@@ -123,6 +124,7 @@ export default function Home() {
     });
     engine.init();
     engine.start();
+    engine.isMobile = window.innerWidth < 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     engineRef.current = engine;
 
     // Load preview icons for all unit/building types (deferred to next tick

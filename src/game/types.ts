@@ -37,6 +37,25 @@ export interface Unit {
   alive: boolean;
   // Combat target acquisition
   lastTargetSearch: number;
+  // Animation state
+  anim: {
+    state: 'idle' | 'walk' | 'attack' | 'gather';
+    phase: number;      // animation phase (radians)
+    speed: number;      // animation playback speed
+    attackTrigger: number;  // counts down during attack swing
+    parts: {
+      legL?: THREE.Object3D;
+      legR?: THREE.Object3D;
+      armL?: THREE.Object3D;
+      armR?: THREE.Object3D;
+      torso?: THREE.Object3D;
+      head?: THREE.Object3D;
+      tool?: THREE.Object3D;   // weapon/tool
+      bow?: THREE.Object3D;
+      horse?: THREE.Object3D;
+      rider?: THREE.Object3D;
+    };
+  };
 }
 
 export interface Building {
@@ -60,6 +79,8 @@ export interface Building {
   // Footprint in tiles
   footprint: [number, number]; // tiles wide, deep
   age: Age;
+  // Name label sprite (shown above building)
+  label?: THREE.Sprite;
 }
 
 export interface ResourceNode {

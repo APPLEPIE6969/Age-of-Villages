@@ -16,6 +16,7 @@ import {
 import { CameraRig } from './camera';
 import { Pathfinder } from './pathfinding';
 import { pregenerateIcons, disposeIcons, getUnitIcon, getBuildingIcon } from './icons';
+import { createLabelSprite, createTooltipSprite } from './labels';
 import {
   Unit, Building, ResourceNode, Projectile, Player, Team,
 } from './types';
@@ -71,6 +72,13 @@ export class GameEngine {
 
   // Game over
   private gameOver = false;
+
+  // Mobile mode (affects label visibility)
+  isMobile = false;
+
+  // Hover tooltip (desktop only)
+  private hoverTooltip: THREE.Sprite | null = null;
+  private hoveredBuildingId: number | null = null;
 
   // AI state
   private aiState: {
@@ -401,6 +409,8 @@ export class GameEngine {
     this.scene.add(mesh);
 
     const id = this.nextId++;
+    // Find animation parts by name
+    const findPart = (name: string) => mesh.getObjectByName(name);
     const unit: Unit = {
       __kind: 'unit',
       id, type, team, mesh,
@@ -417,6 +427,19 @@ export class GameEngine {
       bobPhase: Math.random() * Math.PI * 2,
       alive: true,
       lastTargetSearch: 0,
+      anim: {
+        state: 'idle',
+        phase: Math.random() * Math.PI * 2,
+        speed: 1,
+        attackTrigger: 0,
+        parts: {
+          legL: findPart('legL'),
+          legR: findPart('legR'),
+          armL: findPart('armL'),
+          armR: findPart('armR'),
+          tool: findPart('tool'),
+        },
+      },
     };
     this.units.set(id, unit);
     player.pop += stats.popCost;
@@ -470,6 +493,20 @@ export class GameEngine {
       footprint: stats.footprint,
       age: stats.age,
     };
+
+    // Create name label above building
+    const labelHeight = type === 'town_center' ? 6 : type === 'tower' ? 6 : type === 'wall' ? 3.5 : 3.2;
+    const label = createLabelSprite(stats.label, {
+      fontSize: 28,
+      color: '#ffffff',
+      bgColor: team === 'player' ? '#1a3060' : '#401818',
+      bgOpacity: 0.75,
+    });
+    label.position.set(0, labelHeight, 0);
+    label.name = 'buildingLabel';
+    mesh.add(label);
+    b.label = label;
+
     this.buildings.set(id, b);
 
     // Show scaffold if under construction; hide until complete
@@ -477,9 +514,11 @@ export class GameEngine {
     if (scaffold) scaffold.visible = underConstruction;
     // Hide main mesh pieces while scaffold is shown (except the scaffold itself + rings + hp bars)
     mesh.children.forEach(c => {
-      if (c.name === 'scaffold' || c.name === 'selectionRing' || c.name === 'hpBar') return;
+      if (c.name === 'scaffold' || c.name === 'selectionRing' || c.name === 'hpBar' || c.name === 'buildingLabel') return;
       c.visible = !underConstruction;
     });
+    // Hide label while under construction
+    label.visible = !underConstruction;
 
     // Update pop cap if applicable
     this.updatePopCap(team);
@@ -787,6 +826,11 @@ export class GameEngine {
           });
         }
       }
+      // Desktop hover tooltip on buildings (mobile shows labels always)
+      if (!this.isMobile && !this.placingBuilding) {
+        this.updateNDC(e);
+        this.updateHoverTooltip();
+      }
       return;
     }
     if (this.mouseDownButton === 0 && this.dragBox) {
@@ -794,6 +838,47 @@ export class GameEngine {
       this.dragBox.y1 = e.clientY;
     }
   };
+
+  /** Update the desktop hover tooltip — shows detailed info when hovering a building */
+  private updateHoverTooltip() {
+    const pick = this.pickUnitOrBuilding();
+    const buildingId = pick && pick.kind === 'building' ? pick.id : null;
+
+    if (buildingId === this.hoveredBuildingId) return; // no change
+
+    // Remove old tooltip
+    if (this.hoverTooltip) {
+      this.scene.remove(this.hoverTooltip);
+      this.hoverTooltip = null;
+    }
+    this.hoveredBuildingId = buildingId;
+
+    if (buildingId !== null) {
+      const b = this.buildings.get(buildingId);
+      if (b) {
+        const stats = BUILDING_STATS[b.type];
+        const lines: string[] = [stats.label];
+        lines.push(`HP: ${Math.ceil(b.hp)}/${b.maxHp}`);
+        const costParts: string[] = [];
+        if (stats.cost.wood) costParts.push(`${stats.cost.wood}w`);
+        if (stats.cost.food) costParts.push(`${stats.cost.food}f`);
+        if (stats.cost.gold) costParts.push(`${stats.cost.gold}g`);
+        if (costParts.length) lines.push(`Cost: ${costParts.join(' ')}`);
+        if (stats.popProvided) lines.push(`Pop: +${stats.popProvided}`);
+        if (stats.produces && stats.produces.length) {
+          lines.push(`Trains: ${stats.produces.map(u => UNIT_STATS[u].label).join(', ')}`);
+        }
+        if (stats.attack) lines.push(`Attack: ${stats.attack.damage} dmg`);
+        lines.push(`Age: ${AGE_INFO[stats.age].label}`);
+
+        const tooltip = createTooltipSprite(lines, { fontSize: 22 });
+        const yOffset = b.type === 'town_center' ? 7 : b.type === 'tower' ? 7 : 5;
+        tooltip.position.set(b.pos.x, this.terrain.getHeightAt(b.pos.x, b.pos.z) + yOffset, b.pos.z);
+        this.scene.add(tooltip);
+        this.hoverTooltip = tooltip;
+      }
+    }
+  }
 
   private onMouseUp = (e: MouseEvent) => {
     if (this.gameOver) return;
@@ -1217,6 +1302,18 @@ export class GameEngine {
         return;
       }
     }
+    // Clean up any existing ghost from a previous placement attempt
+    if (this.ghostMesh) {
+      this.scene.remove(this.ghostMesh);
+      this.ghostMesh.traverse(o => {
+        if (o instanceof THREE.Mesh) {
+          o.geometry.dispose();
+          const mat = o.material as THREE.Material;
+          if (mat.dispose) mat.dispose();
+        }
+      });
+      this.ghostMesh = null;
+    }
     this.placingBuilding = type;
     // Create ghost mesh
     this.ghostMesh = buildBuildingMesh(type, 'player');
@@ -1535,13 +1632,121 @@ export class GameEngine {
       while (diff < -Math.PI) diff += Math.PI * 2;
       u.mesh.rotation.y = cur + diff * Math.min(1, dt * 8);
 
-      // Walk bob
+      // --- Animation ---
+      // Determine animation state
       const moving = u.velocity.lengthSq() > 0.001 || u.path.length > 0;
-      if (moving) {
-        u.bobPhase += dt * 8;
-        // Tiny vertical bob on torso (whole mesh slightly)
-        u.mesh.position.y = u.pos.y + Math.abs(Math.sin(u.bobPhase)) * 0.08;
+      const isAttacking = u.order.kind === 'attack' && u.attackCooldown > stats.attackSpeed * 0.7;
+      const isGathering = u.order.kind === 'gather' && (u.order as any).phase === 'gathering';
+      let newState: 'idle' | 'walk' | 'attack' | 'gather';
+      if (isAttacking) newState = 'attack';
+      else if (isGathering) newState = 'gather';
+      else if (moving) newState = 'walk';
+      else newState = 'idle';
+      if (newState !== u.anim.state) {
+        u.anim.state = newState;
+        u.anim.phase = 0;
       }
+      this.animateUnit(u, dt, stats);
+    }
+  }
+
+  /**
+   * Per-unit-type animation. Updates limb rotations based on anim.state.
+   * Different unit types get different animation flavors:
+   *  - villager: gentle sway, tool swings when gathering
+   *  - infantry: march walk, overhead sword chop on attack
+   *  - archer: bow draw on attack
+   *  - cavalry: horse gallop (whole body bounce), lance thrust on attack
+   *  - ram: rolling wheels
+   */
+  private animateUnit(u: Unit, dt: number, stats: UnitStats) {
+    const a = u.anim;
+    const p = a.parts;
+    const stats2 = UNIT_STATS[u.type];
+    const category = stats2.category;
+
+    // Phase advance speed depends on state
+    let phaseSpeed = 6;
+    if (a.state === 'walk') phaseSpeed = 8 * (stats2.moveSpeed / 7);
+    else if (a.state === 'attack') phaseSpeed = 6 / stats2.attackSpeed;
+    else if (a.state === 'gather') phaseSpeed = 5;
+    else phaseSpeed = 2; // idle
+
+    a.phase += dt * phaseSpeed;
+
+    if (u.type === 'ram') {
+      // Ram: just bob up and down slowly, wheels don't rotate (cylinders)
+      const bob = Math.sin(a.phase * 0.8) * 0.05;
+      u.mesh.position.y = u.pos.y + Math.abs(bob);
+      return;
+    }
+
+    if (category === 'cavalry') {
+      // Cavalry: horse gallop — whole unit bounces, no leg animation (horse legs are static meshes)
+      if (a.state === 'walk') {
+        const gallop = Math.sin(a.phase * 1.5);
+        u.mesh.position.y = u.pos.y + Math.abs(gallop) * 0.15;
+        // Slight forward lean
+        if (p.torso) p.torso.rotation.x = gallop * 0.05;
+      } else if (a.state === 'attack') {
+        // Lance thrust — quick forward jab
+        const swing = Math.sin(a.phase);
+        if (p.armR) p.armR.rotation.x = -swing * 0.8;
+        u.mesh.position.y = u.pos.y + Math.abs(Math.sin(a.phase * 0.5)) * 0.05;
+      } else {
+        u.mesh.position.y = u.pos.y;
+        if (p.torso) p.torso.rotation.x = 0;
+      }
+      return;
+    }
+
+    // Humanoid units (villager, infantry, archer)
+    const swing = Math.sin(a.phase);
+    const swing2 = Math.sin(a.phase + Math.PI);
+
+    if (a.state === 'idle') {
+      // Idle: gentle breathing sway, arms slightly out
+      const breathe = Math.sin(a.phase * 0.5) * 0.03;
+      if (p.legL) p.legL.rotation.x = 0;
+      if (p.legR) p.legR.rotation.x = 0;
+      if (p.armL) p.armL.rotation.x = breathe;
+      if (p.armR) p.armR.rotation.x = -breathe;
+      u.mesh.position.y = u.pos.y + breathe * 0.3;
+    } else if (a.state === 'walk') {
+      // Walk: legs swing opposite, arms swing opposite to legs
+      const amp = 0.5;
+      if (p.legL) p.legL.rotation.x = swing * amp;
+      if (p.legR) p.legR.rotation.x = swing2 * amp;
+      if (p.armL) p.armL.rotation.x = swing2 * amp * 0.7;
+      if (p.armR) p.armR.rotation.x = swing * amp * 0.7;
+      // Vertical bob — highest when legs are mid-stride
+      u.mesh.position.y = u.pos.y + Math.abs(Math.sin(a.phase)) * 0.06;
+    } else if (a.state === 'attack') {
+      // Attack: different per category
+      const atkPhase = a.phase;
+      if (category === 'archer') {
+        // Archer: draw bow back (left arm pulls back), release
+        const draw = Math.sin(atkPhase * 0.5);
+        if (p.armL) p.armL.rotation.x = -draw * 1.2;
+        if (p.armR) p.armR.rotation.x = draw * 0.3;
+        u.mesh.position.y = u.pos.y;
+      } else {
+        // Infantry: overhead sword chop
+        // Wind up (phase 0..PI/2), swing down (PI/2..PI)
+        const chop = Math.sin(atkPhase);
+        if (p.armR) p.armR.rotation.x = -chop * 1.5;
+        if (p.armL) p.armL.rotation.x = chop * 0.3;
+        // Slight forward lunge
+        u.mesh.position.y = u.pos.y + Math.abs(Math.sin(atkPhase * 0.5)) * 0.04;
+      }
+    } else if (a.state === 'gather') {
+      // Gather: tool swings up and down (chopping wood / mining)
+      const chop = Math.sin(a.phase * 1.5);
+      if (p.armR) p.armR.rotation.x = -chop * 1.0;
+      if (p.armL) p.armL.rotation.x = chop * 0.2;
+      if (p.legL) p.legL.rotation.x = 0;
+      if (p.legR) p.legR.rotation.x = 0;
+      u.mesh.position.y = u.pos.y + Math.abs(Math.sin(a.phase * 0.75)) * 0.03;
     }
   }
 
@@ -2239,6 +2444,11 @@ export class GameEngine {
             b.team === 'player' ? (ratio > 0.5 ? 0x33ff66 : ratio > 0.25 ? 0xffaa33 : 0xff3333) : 0xff3333
           );
         }
+      }
+      // Building name label: always visible on mobile, hidden on desktop
+      // (desktop uses hover tooltip instead)
+      if (b.label) {
+        b.label.visible = this.isMobile && !b.underConstruction;
       }
     }
   }
