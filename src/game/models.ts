@@ -616,7 +616,7 @@ export function buildBuildingMesh(type: BuildingType, team: 'player' | 'enemy'):
 // Resource node meshes (tree, gold ore, berry bush, stone)
 // ----------------------------------------------------------------------------
 
-/** Tree types: 0=Oak, 1=Pine, 2=Birch, 3=Dead/Dry */
+/** Tree types: 0=Oak, 1=Pine, 2=Birch, 3=Autumn Maple */
 export type TreeType = 0 | 1 | 2 | 3;
 
 export function buildTreeMesh(variant: number): THREE.Group {
@@ -755,55 +755,62 @@ function buildBirchTree(g: THREE.Group, tex: ReturnType<typeof getTextures>): TH
   return g;
 }
 
-/** Dead/Dry tree — bare branches, no leaves, greyish */
+/** Autumn Maple — full rounded canopy with orange/red autumn foliage */
 function buildDeadTree(g: THREE.Group, tex: ReturnType<typeof getTextures>): THREE.Group {
   const barkMat = standardMat({
     map: tex.wood.map, normalMap: tex.wood.normalMap,
     roughnessMap: tex.wood.roughnessMap, roughness: 0.95,
-    color: 0x6a5a48,
+    color: 0x6b4f2e,
   });
+  // Autumn foliage colors — warm oranges and reds
+  const leafOrange = standardMat({ color: 0xd4671a, roughness: 0.92 });
+  const leafRed = standardMat({ color: 0xb83c1a, roughness: 0.92 });
+  const leafYellow = standardMat({ color: 0xe8a020, roughness: 0.9 });
 
-  // Trunk — twisted, irregular
-  const trunk = new THREE.Mesh(cylGeo(0.2, 0.32, 2.8, 6), barkMat);
-  trunk.position.y = 1.4;
-  trunk.rotation.z = 0.05;
+  // Trunk — sturdy, tapered
+  const trunk = new THREE.Mesh(cylGeo(0.22, 0.34, 2.6, 7), barkMat);
+  trunk.position.y = 1.3;
   trunk.castShadow = true;
+  // Root flare
+  const rootFlare = new THREE.Mesh(cylGeo(0.38, 0.34, 0.3, 7), barkMat);
+  rootFlare.position.y = 0.15;
+  rootFlare.castShadow = true;
 
-  // Branches — thin cylinders radiating outward and upward
-  const branchAngles = [
-    { yaw: 0, pitch: 0.6, len: 1.2, y: 2.2 },
-    { yaw: Math.PI * 0.5, pitch: 0.7, len: 1.0, y: 2.5 },
-    { yaw: Math.PI, pitch: 0.5, len: 1.1, y: 2.0 },
-    { yaw: Math.PI * 1.5, pitch: 0.8, len: 0.9, y: 2.6 },
-    { yaw: Math.PI * 0.25, pitch: 0.9, len: 0.8, y: 2.8 },
-    { yaw: Math.PI * 1.25, pitch: 0.6, len: 1.0, y: 2.3 },
-  ];
-  const parts: THREE.Object3D[] = [trunk];
-  for (const b of branchAngles) {
-    const branch = new THREE.Mesh(cylGeo(0.05, 0.1, b.len, 4), barkMat);
-    branch.position.y = b.y;
-    // Orient: branch grows outward at angle
-    branch.rotation.z = Math.PI / 2 - b.pitch;
-    branch.rotation.y = b.yaw;
-    // Offset to start from trunk surface
-    branch.position.x = Math.cos(b.yaw) * 0.2 * Math.cos(b.pitch);
-    branch.position.z = Math.sin(b.yaw) * 0.2 * Math.cos(b.pitch);
-    branch.position.y += Math.sin(b.pitch) * b.len * 0.3;
-    branch.castShadow = true;
-    parts.push(branch);
-  }
+  // Two main branches splitting from the trunk
+  const branch1 = new THREE.Mesh(cylGeo(0.1, 0.16, 1.2, 5), barkMat);
+  branch1.position.set(0.3, 2.2, 0);
+  branch1.rotation.z = 0.7;
+  branch1.castShadow = true;
+  const branch2 = new THREE.Mesh(cylGeo(0.1, 0.16, 1.2, 5), barkMat);
+  branch2.position.set(-0.3, 2.2, 0);
+  branch2.rotation.z = -0.7;
+  branch2.castShadow = true;
 
-  // A few small dead leaf clusters (brown/grey)
-  const deadLeafMat = standardMat({ color: 0x8a7a5a, roughness: 0.95 });
+  // Full rounded canopy — layered icospheres in autumn colors
   const icoGeo = (r: number, d: number) => new THREE.IcosahedronGeometry(r, d);
-  const d1 = new THREE.Mesh(icoGeo(0.25, 0), deadLeafMat);
-  d1.position.set(0.8, 3.0, 0);
-  d1.castShadow = true;
-  const d2 = new THREE.Mesh(icoGeo(0.2, 0), deadLeafMat);
-  d2.position.set(-0.6, 2.8, 0.3);
-  d2.castShadow = true;
+  const c1 = new THREE.Mesh(icoGeo(1.0, 1), leafOrange);
+  c1.position.set(0, 2.9, 0);
+  c1.scale.set(1.15, 0.9, 1.1);
+  c1.castShadow = true;
+  const c2 = new THREE.Mesh(icoGeo(0.75, 1), leafRed);
+  c2.position.set(0.4, 3.4, 0.15);
+  c2.scale.set(1.0, 0.85, 1.0);
+  c2.castShadow = true;
+  const c3 = new THREE.Mesh(icoGeo(0.7, 1), leafOrange);
+  c3.position.set(-0.35, 3.2, -0.2);
+  c3.castShadow = true;
+  const c4 = new THREE.Mesh(icoGeo(0.6, 1), leafYellow);
+  c4.position.set(0.1, 3.7, -0.1);
+  c4.scale.set(0.95, 0.8, 0.95);
+  c4.castShadow = true;
+  const c5 = new THREE.Mesh(icoGeo(0.5, 1), leafRed);
+  c5.position.set(-0.2, 3.6, 0.25);
+  c5.castShadow = true;
+  const c6 = new THREE.Mesh(icoGeo(0.45, 1), leafYellow);
+  c6.position.set(0.25, 2.6, 0.3);
+  c6.castShadow = true;
 
-  g.add(...parts, d1, d2);
+  g.add(trunk, rootFlare, branch1, branch2, c1, c2, c3, c4, c5, c6);
   g.userData.isResource = true;
   g.userData.resourceType = 'wood';
   return g;
