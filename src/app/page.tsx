@@ -45,6 +45,112 @@ function buildingDescription(type: BuildingType): string {
   }
 }
 
+/** Custom colored SVG icons — replaces emoji throughout the UI */
+function Icon({ name, size = 16 }: { name: string; size?: number }) {
+  const s = size;
+  switch (name) {
+    case 'wood':
+      return (
+        <svg width={s} height={s} viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+          <path d="M12 2 L6 7 V22 H18 V7 Z" fill="#7ec050" stroke="#3a6b2e" strokeWidth="1"/>
+          <path d="M6 7 H18" stroke="#3a6b2e" strokeWidth="0.8" fill="none"/>
+          <line x1="9" y1="11" x2="15" y2="11" stroke="#5a8a3e" strokeWidth="0.6"/>
+          <line x1="9" y1="14" x2="15" y2="14" stroke="#5a8a3e" strokeWidth="0.6"/>
+          <line x1="9" y1="17" x2="15" y2="17" stroke="#5a8a3e" strokeWidth="0.6"/>
+        </svg>
+      );
+    case 'food':
+      return (
+        <svg width={s} height={s} viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+          <ellipse cx="12" cy="14" rx="8" ry="7" fill="#e67e22"/>
+          <ellipse cx="9" cy="11" rx="3" ry="2" fill="#f5b041" opacity="0.6"/>
+          <path d="M12 7 Q10 4 12 2 Q14 4 12 7" fill="#2d8a2d"/>
+          <path d="M12 7 Q8 5 6 7" stroke="#2d8a2d" strokeWidth="1.5" fill="none"/>
+          <path d="M12 7 Q16 5 18 7" stroke="#2d8a2d" strokeWidth="1.5" fill="none"/>
+        </svg>
+      );
+    case 'gold':
+      return (
+        <svg width={s} height={s} viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+          <circle cx="12" cy="12" r="9" fill="#f1c40f" stroke="#c8a008" strokeWidth="1"/>
+          <circle cx="12" cy="12" r="6" fill="none" stroke="#c8a008" strokeWidth="0.8"/>
+          <text x="12" y="16" textAnchor="middle" fontSize="9" fontWeight="bold" fill="#8a6a00">$</text>
+        </svg>
+      );
+    case 'stone':
+      return (
+        <svg width={s} height={s} viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+          <path d="M4 18 L7 10 L12 7 L17 10 L20 16 L18 20 L6 20 Z" fill="#bdc3c7" stroke="#7f8c8d" strokeWidth="1"/>
+          <path d="M7 10 L12 14 L17 10" fill="none" stroke="#7f8c8d" strokeWidth="0.6"/>
+          <path d="M9 20 L12 14 L15 20" fill="none" stroke="#95a5a6" strokeWidth="0.5"/>
+        </svg>
+      );
+    case 'pop':
+      return (
+        <svg width={s} height={s} viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+          <circle cx="12" cy="8" r="4" fill="#9b59b6"/>
+          <path d="M4 22 Q4 14 12 14 Q20 14 20 22 Z" fill="#9b59b6"/>
+          <circle cx="12" cy="8" r="2" fill="#bb8fce" opacity="0.5"/>
+        </svg>
+      );
+    case 'economy':
+      return (
+        <svg width={s} height={s} viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+          <path d="M12 3 L20 7 V20 H4 V7 Z" fill="#d4a76a" stroke="#8a6a3a" strokeWidth="1"/>
+          <rect x="9" y="13" width="6" height="7" fill="#6a4a2a"/>
+          <line x1="6" y1="10" x2="8" y2="10" stroke="#8a6a3a" strokeWidth="0.8"/>
+          <line x1="16" y1="10" x2="18" y2="10" stroke="#8a6a3a" strokeWidth="0.8"/>
+        </svg>
+      );
+    case 'military':
+      return (
+        <svg width={s} height={s} viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+          <path d="M12 2 L14 8 L20 8 L15 12 L17 18 L12 14 L7 18 L9 12 L4 8 L10 8 Z" fill="#c0392b" stroke="#8b2418" strokeWidth="1"/>
+          <path d="M12 6 L13 9 L16 9 L13.5 11 L14.5 14 L12 12 L9.5 14 L10.5 11 L8 9 L11 9 Z" fill="#e74c3c" opacity="0.5"/>
+        </svg>
+      );
+    case 'defense':
+      return (
+        <svg width={s} height={s} viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+          <path d="M12 2 L20 5 V12 Q20 18 12 22 Q4 18 4 12 V5 Z" fill="#3498db" stroke="#1a5276" strokeWidth="1"/>
+          <path d="M12 6 L16 8 V12 Q16 16 12 18 Q8 16 8 12 V8 Z" fill="#5dade2" opacity="0.4"/>
+        </svg>
+      );
+    case 'build':
+      return (
+        <svg width={s} height={s} viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+          <rect x="3" y="14" width="11" height="5" rx="1" fill="#a0522d" transform="rotate(-45 8 16)"/>
+          <rect x="14" y="4" width="6" height="6" rx="0.5" fill="#7f8c8d" transform="rotate(-45 17 7)"/>
+          <rect x="13" y="3" width="8" height="3" rx="0.5" fill="#95a5a6" transform="rotate(-45 17 4.5)"/>
+        </svg>
+      );
+    case 'close':
+      return (
+        <svg width={s} height={s} viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+          <circle cx="12" cy="12" r="10" fill="#e74c3c"/>
+          <path d="M8 8 L16 16 M16 8 L8 16" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/>
+        </svg>
+      );
+    case 'help':
+      return (
+        <svg width={s} height={s} viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+          <circle cx="12" cy="12" r="10" fill="#4f8cff"/>
+          <text x="12" y="17" textAnchor="middle" fontSize="14" fontWeight="bold" fill="#fff">?</text>
+        </svg>
+      );
+    case 'mobile':
+      return (
+        <svg width={s} height={s} viewBox="0 0 24 24" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+          <rect x="6" y="2" width="12" height="20" rx="2" fill="#2c3e50" stroke="#4f8cff" strokeWidth="1"/>
+          <rect x="8" y="4" width="8" height="13" fill="#4f8cff" opacity="0.3"/>
+          <circle cx="12" cy="19" r="1" fill="#4f8cff"/>
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
+
 export default function Home() {
   const mountRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<GameEngine | null>(null);
@@ -229,9 +335,9 @@ export default function Home() {
   // Build buttons available based on age, grouped by category
   const ageIdx = AGE_ORDER.indexOf(resources.age);
   const buildingCategories: { label: string; icon: string; buildings: BuildingType[] }[] = ([
-    { label: 'Economy', icon: '⚖', buildings: ['town_center', 'house', 'storage'] as BuildingType[] },
-    { label: 'Military', icon: '⚔', buildings: ['barracks', 'archery_range', 'stable', 'siege_workshop'] as BuildingType[] },
-    { label: 'Defense', icon: '🛡', buildings: ['tower', 'wall'] as BuildingType[] },
+    { label: 'Economy', icon: 'economy', buildings: ['town_center', 'house', 'storage'] as BuildingType[] },
+    { label: 'Military', icon: 'military', buildings: ['barracks', 'archery_range', 'stable', 'siege_workshop'] as BuildingType[] },
+    { label: 'Defense', icon: 'defense', buildings: ['tower', 'wall'] as BuildingType[] },
   ] as const).map(cat => ({
     ...cat,
     buildings: cat.buildings.filter(t => {
@@ -464,23 +570,23 @@ export default function Home() {
         flexWrap: 'wrap',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}>
-          <span style={{ color: '#7ec050' }}>&#9728;</span>
+          <Icon name="wood" size={isMobile ? 14 : 16} />
           <span>{isMobile ? '' : 'Wood: '}{resources.wood}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}>
-          <span style={{ color: '#e67e22' }}>&#9774;</span>
+          <Icon name="food" size={isMobile ? 14 : 16} />
           <span>{isMobile ? '' : 'Food: '}{resources.food}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}>
-          <span style={{ color: '#f1c40f' }}>&#9733;</span>
+          <Icon name="gold" size={isMobile ? 14 : 16} />
           <span>{isMobile ? '' : 'Gold: '}{resources.gold}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}>
-          <span style={{ color: '#bdc3c7' }}>&#9831;</span>
+          <Icon name="stone" size={isMobile ? 14 : 16} />
           <span>{isMobile ? '' : 'Stone: '}{resources.stone}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600 }}>
-          <span style={{ color: '#9b59b6' }}>&#9794;</span>
+          <Icon name="pop" size={isMobile ? 14 : 16} />
           <span>{resources.pop}/{resources.popCap}</span>
         </div>
         <div style={{ flex: 1 }} />
@@ -536,7 +642,7 @@ export default function Home() {
             fontSize: '12px',
           }}
         >
-          ?
+          <Icon name="help" size={20} />
         </button>
       </div>
 
@@ -731,7 +837,7 @@ export default function Home() {
             pointerEvents: 'auto',
           }}
         >
-          {showBuildPanel ? '✕ Close' : '🔨 Build'}
+          {showBuildPanel ? <><Icon name="close" size={14} /> Close</> : <><Icon name="build" size={14} /> Build</>}
         </button>
       )}
 
@@ -830,7 +936,7 @@ export default function Home() {
                     padding: '0.1rem 0.4rem', borderBottom: '1px solid #4f8cff',
                     marginBottom: '0.15rem',
                   }}>
-                    {cat.icon} {cat.label}
+                    <Icon name={cat.icon} size={14} /> {cat.label}
                   </div>
                   <div style={{ display: 'flex', gap: '0.3rem' }}>
                     {cat.buildings.map(type => renderBuildingButton(type))}
@@ -894,12 +1000,12 @@ export default function Home() {
           <div style={{ fontSize: isMobile ? '12px' : '13px', lineHeight: 1.6 }}>
             {isMobile ? (
               <>
-                <div><b>📱 Mobile Controls:</b></div>
+                <div><b><Icon name="mobile" size={16} /> Mobile Controls:</b></div>
                 <div style={{ marginLeft: '1rem', marginBottom: '0.4rem' }}>
                   <b>One finger:</b> tap = select, drag = box-select, long-press = command (move/gather/attack)<br />
                   <b>Two fingers:</b> drag = pan camera, pinch = zoom, twist = rotate<br />
                   <b>Minimap:</b> tap to jump camera<br />
-                  <b>Build button:</b> tap 🔨 Build at bottom to open build menu, tap a building, then tap valid ground (green)
+                  <b>Build button:</b> tap <Icon name="build" size={12} /> Build at bottom to open build menu, tap a building, then tap valid ground (green)
                 </div>
               </>
             ) : (
@@ -928,7 +1034,7 @@ export default function Home() {
             )}
             <div><b>Building:</b></div>
             <div style={{ marginLeft: '1rem', marginBottom: '0.4rem' }}>
-              {isMobile ? 'Tap 🔨 Build, choose a building, then tap valid ground (green ghost).' : 'Deselect everything to see the build bar at the bottom.'}<br />
+              {isMobile ? <>Tap <Icon name="build" size={12} /> Build, choose a building, then tap valid ground (green ghost).</> : 'Deselect everything to see the build bar at the bottom.'}<br />
               {isMobile ? 'Tap elsewhere or pick another building to cancel.' : 'Click a building, then left-click on valid ground (green ghost) to place. ESC cancels.'}<br />
               Idle villagers auto-assist construction.
             </div>
