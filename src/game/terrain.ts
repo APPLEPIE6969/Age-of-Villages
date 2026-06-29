@@ -206,6 +206,111 @@ export function buildTerrain(scene: THREE.Scene, seed = 1337): TerrainData {
   waterMesh.receiveShadow = true;
   scene.add(waterMesh);
 
+  // --- Ground skirt: vertical walls around the terrain edges ---
+  // This prevents the "floating island" look by giving the terrain
+  // visible depth — like a solid block of earth, not a thin plane.
+  const skirtDepth = 30; // how far down the skirt goes
+  const skirtMat = new THREE.MeshStandardMaterial({
+    color: 0x5a4030, roughness: 0.95, // dark dirt/earth color
+  });
+  const skirtRockMat = new THREE.MeshStandardMaterial({
+    color: 0x4a4038, roughness: 0.95, // rocky earth
+  });
+
+  // Sample the terrain edge heights to build the skirt
+  const edgeSamples = 64;
+  const halfMap = MAP_SIZE / 2;
+
+  // Build 4 skirt walls (N, S, E, W) as custom geometries
+  const buildSkirtWall = (side: 'N' | 'S' | 'E' | 'W', wallMat: THREE.Material) => {
+    const positions: number[] = [];
+    const indices: number[] = [];
+    let idx = 0;
+
+    for (let i = 0; i <= edgeSamples; i++) {
+      const t = i / edgeSamples;
+      let x: number, z: number;
+      if (side === 'N') { x = -halfMap + t * MAP_SIZE; z = -halfMap; }
+      else if (side === 'S') { x = -halfMap + t * MAP_SIZE; z = halfMap; }
+      else if (side === 'E') { x = halfMap; z = -halfMap + t * MAP_SIZE; }
+      else { x = -halfMap; z = -halfMap + t * MAP_SIZE; } // W
+
+      const topY = getHeightAt(x, z);
+      // Top vertex
+      positions.push(x, topY, z);
+      // Bottom vertex (deep below)
+      positions.push(x, topY - skirtDepth, z);
+      idx += 2;
+
+      // Build quad with previous
+      if (i > 0) {
+        const a = idx - 4, b = idx - 3, c = idx - 2, d = idx - 1;
+        // Flip winding based on side so normals face outward
+        if (side === 'N' || side === 'W') {
+          indices.push(a, b, c, b, d, c);
+        } else {
+          indices.push(a, c, b, b, c, d);
+        }
+      }
+    }
+
+    const skirtGeo = new THREE.BufferGeometry();
+    skirtGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    skirtGeo.setIndex(indices);
+    skirtGeo.computeVertexNormals();
+    const wall = new THREE.Mesh(skirtGeo, wallMat);
+    wall.frustumCulled = false;
+    return wall;
+  };
+
+  const sides: ['N' | 'S' | 'E' | 'W', THREE.Material][] = [
+    ['N', skirtMat], ['S', skirtRockMat], ['E', skirtMat], ['W', skirtRockMat],
+  ];
+  sides.forEach(([side, mat]) => {
+    scene.add(buildSkirtWall(side, mat));
+  });
+
+  // --- Bottom "underground" plane ---
+  // A large dark plane below the terrain so you don't see sky through the bottom
+  const bottomGeo = new THREE.PlaneGeometry(MAP_SIZE * 1.2, MAP_SIZE * 1.2);
+  bottomGeo.rotateX(Math.PI / 2);
+  const bottomMat = new THREE.MeshStandardMaterial({
+    color: 0x2a1a10, roughness: 1.0,
+  });
+  const bottomMesh = new THREE.Mesh(bottomGeo, bottomMat);
+  bottomMesh.position.y = -skirtDepth;
+  bottomMesh.frustumCulled = false;
+  scene.add(bottomMesh);
+
+  // --- Distant mountain ring ---
+  // A ring of low-poly mountains around the map perimeter that fills the horizon
+  // and hides the terrain edge. These are decorative only (no collision).
+  const mountainMat = new THREE.MeshStandardMaterial({
+    color: 0x3a4a5a, roughness: 0.95,
+  });
+  const mountainMat2 = new THREE.MeshStandardMaterial({
+    color: 0x4a5a6a, roughness: 0.95,
+  });
+  const mountainRingRadius = MAP_SIZE * 0.65;
+  const mountainCount = 24;
+  for (let i = 0; i < mountainCount; i++) {
+    const angle = (i / mountainCount) * Math.PI * 2;
+    const r = mountainRingRadius + (Math.random() - 0.5) * 60;
+    const mx = Math.cos(angle) * r;
+    const mz = Math.sin(angle) * r;
+    // Mountain is a cone with random height/size
+    const mHeight = 25 + Math.random() * 30;
+    const mRadius = 20 + Math.random() * 25;
+    const mGeo = new THREE.ConeGeometry(mRadius, mHeight, 5 + Math.floor(Math.random() * 3));
+    const m = new THREE.Mesh(mGeo, i % 3 === 0 ? mountainMat2 : mountainMat);
+    m.position.set(mx, mHeight * 0.5 - 5, mz);
+    m.rotation.y = Math.random() * Math.PI;
+    m.castShadow = false; // too far for shadows
+    m.receiveShadow = false;
+    m.frustumCulled = false;
+    scene.add(m);
+  }
+
   // Helper: getHeightAt(worldX, worldZ) — bilinear sample
   const half = MAP_SIZE / 2;
   const cellSize = MAP_SIZE / segs;
