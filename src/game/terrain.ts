@@ -311,33 +311,158 @@ export function buildTerrain(scene: THREE.Scene, seed = 1337): TerrainData {
   bottomMesh.frustumCulled = false;
   scene.add(bottomMesh);
 
-  // --- Distant mountain ring ---
-  // A ring of low-poly mountains around the map perimeter that fills the horizon
-  // and hides the terrain edge. These are decorative only (no collision).
-  const mountainMat = new THREE.MeshStandardMaterial({
-    color: 0x3a4a5a, roughness: 0.95,
+  // --- Distant mountain range ---
+  // A ring of detailed mountains around the map perimeter that fills the horizon
+  // and hides the terrain edge. Uses displaced icosahedron geometry for organic
+  // rocky shapes, with snow caps and layered coloring.
+  const mountainBaseMat = new THREE.MeshStandardMaterial({
+    color: 0x4a5560, roughness: 0.92, metalness: 0.0,
+    flatShading: true, // gives a faceted rocky look
   });
-  const mountainMat2 = new THREE.MeshStandardMaterial({
-    color: 0x4a5a6a, roughness: 0.95,
+  const mountainMidMat = new THREE.MeshStandardMaterial({
+    color: 0x5a6570, roughness: 0.9, flatShading: true,
   });
-  const mountainRingRadius = MAP_SIZE * 0.65;
-  const mountainCount = 24;
+  const mountainDarkMat = new THREE.MeshStandardMaterial({
+    color: 0x3a4550, roughness: 0.95, flatShading: true,
+  });
+  // Snow material for mountain peaks
+  const snowMat = new THREE.MeshStandardMaterial({
+    color: 0xf0f4f8, roughness: 0.6, metalness: 0.0,
+    flatShading: true,
+  });
+
+  /**
+   * Build a detailed mountain using a displaced icosahedron.
+   * The displacement creates organic rocky peaks and ridges.
+   */
+  const buildMountain = (
+    radius: number, height: number, detail: number,
+    seed: number, mat: THREE.Material,
+  ): THREE.Mesh => {
+    // Start with a cone, then displace vertices for rocky detail
+    const geo = new THREE.ConeGeometry(radius, height, 8, detail);
+    const pos = geo.attributes.position as THREE.BufferAttribute;
+    // Noise function for displacement
+    const noise = (x: number, y: number, z: number) => {
+      const n = Math.sin(x * 2.1 + seed) * Math.cos(y * 1.7 + seed * 1.3) * Math.sin(z * 2.3 + seed * 0.7);
+      const n2 = Math.sin(x * 4.5 + seed * 2) * Math.cos(z * 5.2 + seed * 1.7) * 0.5;
+      return n + n2;
+    };
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const y = pos.getY(i);
+      const z = pos.getZ(i);
+      // Displace outward based on noise — more displacement near the top
+      const heightFactor = (y + height / 2) / height; // 0 at bottom, 1 at top
+      const disp = noise(x, y, z) * (0.15 + heightFactor * 0.3) * radius;
+      const len = Math.hypot(x, z) || 1;
+      const nx = x / len, nz = z / len;
+      pos.setX(i, x + nx * disp);
+      pos.setZ(i, z + nz * disp);
+      // Slightly rough up the height too
+      pos.setY(i, y + noise(x * 0.5, y * 0.5, z * 0.5) * height * 0.05);
+    }
+    geo.computeVertexNormals();
+    const m = new THREE.Mesh(geo, mat);
+    m.frustumCulled = false;
+    return m;
+  };
+
+  // Mountain ring — more mountains, closer, taller to fill the horizon
+  const mountainRingRadius = MAP_SIZE * 0.58; // closer than before (was 0.65)
+  const mountainCount = 40; // more mountains (was 24)
   for (let i = 0; i < mountainCount; i++) {
     const angle = (i / mountainCount) * Math.PI * 2;
-    const r = mountainRingRadius + (Math.random() - 0.5) * 60;
+    const r = mountainRingRadius + (Math.random() - 0.5) * 40;
     const mx = Math.cos(angle) * r;
     const mz = Math.sin(angle) * r;
-    // Mountain is a cone with random height/size
-    const mHeight = 25 + Math.random() * 30;
-    const mRadius = 20 + Math.random() * 25;
-    const mGeo = new THREE.ConeGeometry(mRadius, mHeight, 5 + Math.floor(Math.random() * 3));
-    const m = new THREE.Mesh(mGeo, i % 3 === 0 ? mountainMat2 : mountainMat);
-    m.position.set(mx, mHeight * 0.5 - 5, mz);
-    m.rotation.y = Math.random() * Math.PI;
-    m.castShadow = false; // too far for shadows
+
+    // Vary mountain sizes — some big peaks, some smaller foothills
+    const isLargePeak = Math.random() > 0.4;
+    const mHeight = isLargePeak ? 45 + Math.random() * 40 : 20 + Math.random() * 25;
+    const mRadius = isLargePeak ? 22 + Math.random() * 18 : 12 + Math.random() * 15;
+    const detail = isLargePeak ? 5 : 4; // more subdivisions for large peaks
+
+    // Pick material based on height — taller mountains get snow caps
+    let mat: THREE.Material;
+    if (mHeight > 60) mat = mountainDarkMat;
+    else if (mHeight > 35) mat = mountainMidMat;
+    else mat = mountainBaseMat;
+
+    const m = buildMountain(mRadius, mHeight, detail, i * 17.3, mat);
+    m.position.set(mx, mHeight * 0.5 - 8, mz);
+    m.rotation.y = Math.random() * Math.PI * 2;
+    m.castShadow = false;
     m.receiveShadow = false;
-    m.frustumCulled = false;
     scene.add(m);
+
+    // Add snow cap on tall mountains
+    if (mHeight > 55) {
+      const snowRadius = mRadius * 0.4;
+      const snowHeight = mHeight * 0.25;
+      const snowGeo = new THREE.ConeGeometry(snowRadius, snowHeight, 7, 2);
+      // Displace snow slightly for natural look
+      const spos = snowGeo.attributes.position as THREE.BufferAttribute;
+      for (let j = 0; j < spos.count; j++) {
+        const sx = spos.getX(j), sz = spos.getZ(j);
+        spos.setX(j, sx + Math.sin(sx * 3 + i) * 0.3);
+        spos.setZ(j, sz + Math.cos(sz * 3 + i) * 0.3);
+      }
+      snowGeo.computeVertexNormals();
+      const snow = new THREE.Mesh(snowGeo, snowMat);
+      snow.position.set(mx, mHeight - snowHeight * 0.5 - 8, mz);
+      snow.rotation.y = m.rotation.y;
+      snow.frustumCulled = false;
+      scene.add(snow);
+    }
+
+    // Add a smaller secondary peak next to large mountains (cluster effect)
+    if (isLargePeak && Math.random() > 0.5) {
+      const sAngle = angle + (Math.random() - 0.5) * 0.15;
+      const sR = r + (Math.random() - 0.5) * 15;
+      const sx = Math.cos(sAngle) * sR;
+      const sz = Math.sin(sAngle) * sR;
+      const sHeight = mHeight * (0.5 + Math.random() * 0.3);
+      const sRadius = mRadius * 0.7;
+      const sMat = i % 2 === 0 ? mountainMidMat : mountainBaseMat;
+      const sM = buildMountain(sRadius, sHeight, 4, i * 23.7 + 5, sMat);
+      sM.position.set(sx, sHeight * 0.5 - 8, sz);
+      sM.rotation.y = Math.random() * Math.PI * 2;
+      sM.frustumCulled = false;
+      scene.add(sM);
+    }
+  }
+
+  // --- Foreground hills ---
+  // Smaller rolling hills just outside the terrain edge to blend the transition
+  const hillMat = new THREE.MeshStandardMaterial({
+    color: 0x3a5a3a, roughness: 0.95, flatShading: true,
+  });
+  const hillMat2 = new THREE.MeshStandardMaterial({
+    color: 0x4a6a3a, roughness: 0.95, flatShading: true,
+  });
+  for (let i = 0; i < 32; i++) {
+    const angle = (i / 32) * Math.PI * 2 + Math.random() * 0.1;
+    const r = MAP_SIZE * 0.52 + Math.random() * 15;
+    const hx = Math.cos(angle) * r;
+    const hz = Math.sin(angle) * r;
+    const hHeight = 8 + Math.random() * 12;
+    const hRadius = 10 + Math.random() * 8;
+    // Use icosahedron for lumpy hill shape
+    const hGeo = new THREE.IcosahedronGeometry(hRadius, 1);
+    // Flatten the hill vertically
+    const hpos = hGeo.attributes.position as THREE.BufferAttribute;
+    for (let j = 0; j < hpos.count; j++) {
+      hpos.setY(j, hpos.getY(j) * 0.4);
+    }
+    hGeo.computeVertexNormals();
+    const hill = new THREE.Mesh(hGeo, i % 2 === 0 ? hillMat : hillMat2);
+    hill.position.set(hx, hHeight * 0.3 - 3, hz);
+    hill.rotation.y = Math.random() * Math.PI * 2;
+    hill.castShadow = false;
+    hill.receiveShadow = false;
+    hill.frustumCulled = false;
+    scene.add(hill);
   }
 
   // Decorative scattered rocks (low-poly)
