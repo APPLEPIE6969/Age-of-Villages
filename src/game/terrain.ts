@@ -206,6 +206,35 @@ export function buildTerrain(scene: THREE.Scene, seed = 1337): TerrainData {
   waterMesh.receiveShadow = true;
   scene.add(waterMesh);
 
+  // Helper: getHeightAt(worldX, worldZ) — bilinear sample
+  // MUST be defined before the skirt code below (which calls it).
+  const half = MAP_SIZE / 2;
+  const cellSize = MAP_SIZE / segs;
+  function getHeightAt(x: number, z: number): number {
+    const u = (x + half) / MAP_SIZE;
+    const v = (z + half) / MAP_SIZE;
+    if (u < 0 || u > 1 || v < 0 || v > 1) return 0;
+    const fx = u * segs;
+    const fz = v * segs;
+    const ix = Math.floor(fx), iz = Math.floor(fz);
+    const tx = fx - ix, tz = fz - iz;
+    const i00 = iz * (segs + 1) + Math.min(segs, ix);
+    const i10 = iz * (segs + 1) + Math.min(segs, ix + 1);
+    const i01 = Math.min(segs, iz + 1) * (segs + 1) + Math.min(segs, ix);
+    const i11 = Math.min(segs, iz + 1) * (segs + 1) + Math.min(segs, ix + 1);
+    const h00 = heights[i00];
+    const h10 = heights[i10];
+    const h01 = heights[i01];
+    const h11 = heights[i11];
+    const a = h00 * (1 - tx) + h10 * tx;
+    const b = h01 * (1 - tx) + h11 * tx;
+    return a * (1 - tz) + b * tz;
+  }
+
+  function isWaterAt(x: number, z: number): boolean {
+    return getHeightAt(x, z) < waterLevel;
+  }
+
   // --- Ground skirt: vertical walls around the terrain edges ---
   // This prevents the "floating island" look by giving the terrain
   // visible depth — like a solid block of earth, not a thin plane.
@@ -309,34 +338,6 @@ export function buildTerrain(scene: THREE.Scene, seed = 1337): TerrainData {
     m.receiveShadow = false;
     m.frustumCulled = false;
     scene.add(m);
-  }
-
-  // Helper: getHeightAt(worldX, worldZ) — bilinear sample
-  const half = MAP_SIZE / 2;
-  const cellSize = MAP_SIZE / segs;
-  function getHeightAt(x: number, z: number): number {
-    const u = (x + half) / MAP_SIZE;
-    const v = (z + half) / MAP_SIZE;
-    if (u < 0 || u > 1 || v < 0 || v > 1) return 0;
-    const fx = u * segs;
-    const fz = v * segs;
-    const ix = Math.floor(fx), iz = Math.floor(fz);
-    const tx = fx - ix, tz = fz - iz;
-    const i00 = iz * (segs + 1) + Math.min(segs, ix);
-    const i10 = iz * (segs + 1) + Math.min(segs, ix + 1);
-    const i01 = Math.min(segs, iz + 1) * (segs + 1) + Math.min(segs, ix);
-    const i11 = Math.min(segs, iz + 1) * (segs + 1) + Math.min(segs, ix + 1);
-    const h00 = heights[i00];
-    const h10 = heights[i10];
-    const h01 = heights[i01];
-    const h11 = heights[i11];
-    const a = h00 * (1 - tx) + h10 * tx;
-    const b = h01 * (1 - tx) + h11 * tx;
-    return a * (1 - tz) + b * tz;
-  }
-
-  function isWaterAt(x: number, z: number): boolean {
-    return getHeightAt(x, z) < waterLevel;
   }
 
   // Decorative scattered rocks (low-poly)
