@@ -612,31 +612,198 @@ export function buildBuildingMesh(type: BuildingType, team: 'player' | 'enemy'):
 // ----------------------------------------------------------------------------
 // Resource node meshes (tree, gold ore, berry bush)
 // ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// Resource node meshes (tree, gold ore, berry bush, stone)
+// ----------------------------------------------------------------------------
+
+/** Tree types: 0=Oak, 1=Pine, 2=Birch, 3=Dead/Dry */
+export type TreeType = 0 | 1 | 2 | 3;
+
 export function buildTreeMesh(variant: number): THREE.Group {
-  const tex = getTextures();
+  const treeType: TreeType = (variant % 4) as TreeType;
   const g = new THREE.Group();
-  const woodMat = standardMat({
+  const tex = getTextures();
+
+  switch (treeType) {
+    case 0: return buildOakTree(g, tex);
+    case 1: return buildPineTree(g, tex);
+    case 2: return buildBirchTree(g, tex);
+    case 3: return buildDeadTree(g, tex);
+  }
+}
+
+/** Oak — round bushy canopy with thick trunk */
+function buildOakTree(g: THREE.Group, tex: ReturnType<typeof getTextures>): THREE.Group {
+  const barkMat = standardMat({
     map: tex.wood.map, normalMap: tex.wood.normalMap,
-    roughnessMap: tex.wood.roughnessMap, roughness: 0.9,
-    color: 0x7a5a35,
+    roughnessMap: tex.wood.roughnessMap, roughness: 0.95,
+    color: 0x5a3e22,
   });
-  const leafMat = standardMat({
-    color: variant % 2 === 0 ? 0x3b6b2e : 0x4a7a37, roughness: 0.95,
-  });
-  const trunk = new THREE.Mesh(cylGeo(0.18, 0.28, 2.2, 6), woodMat);
-  trunk.position.y = 1.1;
+  // Two-tone leaf materials for depth
+  const leafDark = standardMat({ color: 0x2d5a1f, roughness: 0.95 });
+  const leafLight = standardMat({ color: 0x4a8a35, roughness: 0.9 });
+
+  // Trunk — tapered cylinder with bark texture
+  const trunk = new THREE.Mesh(cylGeo(0.22, 0.35, 2.4, 8), barkMat);
+  trunk.position.y = 1.2;
   trunk.castShadow = true;
-  // Canopy: 2-3 spheres stacked
-  const c1 = new THREE.Mesh(sphGeo(0.9, 8), leafMat);
-  c1.position.y = 2.2;
+  // Root flare
+  const rootFlare = new THREE.Mesh(cylGeo(0.4, 0.35, 0.3, 8), barkMat);
+  rootFlare.position.y = 0.15;
+  rootFlare.castShadow = true;
+
+  // Canopy — layered icospheres for organic blob shape (not perfect spheres)
+  const icoGeo = (r: number, d: number) => new THREE.IcosahedronGeometry(r, d);
+  const c1 = new THREE.Mesh(icoGeo(1.1, 1), leafDark);
+  c1.position.y = 2.6;
+  c1.scale.set(1.1, 0.85, 1.0);
   c1.castShadow = true;
-  const c2 = new THREE.Mesh(sphGeo(0.7, 8), leafMat);
-  c2.position.set(0.3, 2.8, 0.1);
+  const c2 = new THREE.Mesh(icoGeo(0.8, 1), leafLight);
+  c2.position.set(0.35, 3.1, 0.15);
+  c2.scale.set(1.0, 0.9, 1.0);
   c2.castShadow = true;
-  const c3 = new THREE.Mesh(sphGeo(0.65, 8), leafMat);
-  c3.position.set(-0.25, 2.7, -0.15);
+  const c3 = new THREE.Mesh(icoGeo(0.7, 1), leafDark);
+  c3.position.set(-0.3, 2.9, -0.2);
   c3.castShadow = true;
-  g.add(trunk, c1, c2, c3);
+  const c4 = new THREE.Mesh(icoGeo(0.55, 1), leafLight);
+  c4.position.set(0.1, 3.5, -0.1);
+  c4.castShadow = true;
+
+  g.add(trunk, rootFlare, c1, c2, c3, c4);
+  g.userData.isResource = true;
+  g.userData.resourceType = 'wood';
+  return g;
+}
+
+/** Pine — tall conical layers (classic Christmas tree shape) */
+function buildPineTree(g: THREE.Group, tex: ReturnType<typeof getTextures>): THREE.Group {
+  const barkMat = standardMat({
+    map: tex.wood.map, normalMap: tex.wood.normalMap,
+    roughnessMap: tex.wood.roughnessMap, roughness: 0.95,
+    color: 0x4a3018,
+  });
+  const needleDark = standardMat({ color: 0x1a4a18, roughness: 0.95 });
+  const needleLight = standardMat({ color: 0x2d6628, roughness: 0.9 });
+
+  // Trunk — tall and thin
+  const trunk = new THREE.Mesh(cylGeo(0.16, 0.24, 3.5, 6), barkMat);
+  trunk.position.y = 1.75;
+  trunk.castShadow = true;
+
+  // Conical layers — 4 stacked cones decreasing in size
+  const layers: { r: number; h: number; y: number; mat: THREE.Material }[] = [
+    { r: 1.2, h: 1.4, y: 2.0, mat: needleDark },
+    { r: 1.0, h: 1.3, y: 2.8, mat: needleLight },
+    { r: 0.75, h: 1.1, y: 3.6, mat: needleDark },
+    { r: 0.5, h: 0.9, y: 4.3, mat: needleLight },
+  ];
+  const parts: THREE.Mesh[] = [trunk];
+  for (const l of layers) {
+    const cone = new THREE.Mesh(coneGeo(l.r, l.h, 8), l.mat);
+    cone.position.y = l.y;
+    cone.castShadow = true;
+    parts.push(cone);
+  }
+
+  g.add(...parts);
+  g.userData.isResource = true;
+  g.userData.resourceType = 'wood';
+  return g;
+}
+
+/** Birch — white trunk with sparse narrow canopy */
+function buildBirchTree(g: THREE.Group, tex: ReturnType<typeof getTextures>): THREE.Group {
+  // Birch bark is white with dark patches — use a custom material
+  const barkMat = new THREE.MeshStandardMaterial({
+    color: 0xe8e4dc, roughness: 0.85, metalness: 0.0,
+  });
+  const darkPatchMat = new THREE.MeshStandardMaterial({
+    color: 0x2a2a2a, roughness: 0.9,
+  });
+  const leafMat = standardMat({ color: 0x5a9a3a, roughness: 0.9 });
+  const leafMat2 = standardMat({ color: 0x4a8a2a, roughness: 0.95 });
+
+  // Trunk — thin, white, with dark patch bands
+  const trunk = new THREE.Mesh(cylGeo(0.16, 0.22, 3.2, 8), barkMat);
+  trunk.position.y = 1.6;
+  trunk.castShadow = true;
+
+  // Dark bark patches (small thin cylinders wrapped around trunk)
+  const patch1 = new THREE.Mesh(cylGeo(0.225, 0.225, 0.08, 8), darkPatchMat);
+  patch1.position.y = 0.8;
+  const patch2 = new THREE.Mesh(cylGeo(0.21, 0.21, 0.06, 8), darkPatchMat);
+  patch2.position.y = 1.8;
+  const patch3 = new THREE.Mesh(cylGeo(0.18, 0.18, 0.05, 8), darkPatchMat);
+  patch3.position.y = 2.6;
+
+  // Sparse narrow canopy — fewer, smaller blobs
+  const icoGeo = (r: number, d: number) => new THREE.IcosahedronGeometry(r, d);
+  const c1 = new THREE.Mesh(icoGeo(0.7, 1), leafMat);
+  c1.position.set(0, 3.3, 0);
+  c1.scale.set(0.9, 0.7, 0.9);
+  c1.castShadow = true;
+  const c2 = new THREE.Mesh(icoGeo(0.55, 1), leafMat2);
+  c2.position.set(0.3, 3.7, 0.1);
+  c2.castShadow = true;
+  const c3 = new THREE.Mesh(icoGeo(0.5, 1), leafMat);
+  c3.position.set(-0.25, 3.5, -0.15);
+  c3.castShadow = true;
+
+  g.add(trunk, patch1, patch2, patch3, c1, c2, c3);
+  g.userData.isResource = true;
+  g.userData.resourceType = 'wood';
+  return g;
+}
+
+/** Dead/Dry tree — bare branches, no leaves, greyish */
+function buildDeadTree(g: THREE.Group, tex: ReturnType<typeof getTextures>): THREE.Group {
+  const barkMat = standardMat({
+    map: tex.wood.map, normalMap: tex.wood.normalMap,
+    roughnessMap: tex.wood.roughnessMap, roughness: 0.95,
+    color: 0x6a5a48,
+  });
+
+  // Trunk — twisted, irregular
+  const trunk = new THREE.Mesh(cylGeo(0.2, 0.32, 2.8, 6), barkMat);
+  trunk.position.y = 1.4;
+  trunk.rotation.z = 0.05;
+  trunk.castShadow = true;
+
+  // Branches — thin cylinders radiating outward and upward
+  const branchAngles = [
+    { yaw: 0, pitch: 0.6, len: 1.2, y: 2.2 },
+    { yaw: Math.PI * 0.5, pitch: 0.7, len: 1.0, y: 2.5 },
+    { yaw: Math.PI, pitch: 0.5, len: 1.1, y: 2.0 },
+    { yaw: Math.PI * 1.5, pitch: 0.8, len: 0.9, y: 2.6 },
+    { yaw: Math.PI * 0.25, pitch: 0.9, len: 0.8, y: 2.8 },
+    { yaw: Math.PI * 1.25, pitch: 0.6, len: 1.0, y: 2.3 },
+  ];
+  const parts: THREE.Object3D[] = [trunk];
+  for (const b of branchAngles) {
+    const branch = new THREE.Mesh(cylGeo(0.05, 0.1, b.len, 4), barkMat);
+    branch.position.y = b.y;
+    // Orient: branch grows outward at angle
+    branch.rotation.z = Math.PI / 2 - b.pitch;
+    branch.rotation.y = b.yaw;
+    // Offset to start from trunk surface
+    branch.position.x = Math.cos(b.yaw) * 0.2 * Math.cos(b.pitch);
+    branch.position.z = Math.sin(b.yaw) * 0.2 * Math.cos(b.pitch);
+    branch.position.y += Math.sin(b.pitch) * b.len * 0.3;
+    branch.castShadow = true;
+    parts.push(branch);
+  }
+
+  // A few small dead leaf clusters (brown/grey)
+  const deadLeafMat = standardMat({ color: 0x8a7a5a, roughness: 0.95 });
+  const icoGeo = (r: number, d: number) => new THREE.IcosahedronGeometry(r, d);
+  const d1 = new THREE.Mesh(icoGeo(0.25, 0), deadLeafMat);
+  d1.position.set(0.8, 3.0, 0);
+  d1.castShadow = true;
+  const d2 = new THREE.Mesh(icoGeo(0.2, 0), deadLeafMat);
+  d2.position.set(-0.6, 2.8, 0.3);
+  d2.castShadow = true;
+
+  g.add(...parts, d1, d2);
   g.userData.isResource = true;
   g.userData.resourceType = 'wood';
   return g;
