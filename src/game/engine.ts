@@ -1671,7 +1671,7 @@ export class GameEngine {
         uWarmth: { value: 0.0 },          // NO warm shift (was 0.06)
         uBloomThreshold: { value: 0.85 }, // only very bright things bloom (was 0.65)
         uBloomIntensity: { value: 0.08 }, // very subtle bloom (was 0.25)
-        uGrain: { value: 0.015 },         // less grain (was 0.025)
+        uGrain: { value: 0.008 },         // very subtle grain
       },
       vertexShader: `
         varying vec2 vUv;
@@ -1706,32 +1706,12 @@ export class GameEngine {
           // --- Exposure ---
           color.rgb *= uExposure;
 
-          // --- Bloom (cheap: sample at half resolution by offsetting UVs) ---
-          vec3 bloom = vec3(0.0);
-          float total = 0.0;
-          for (float x = -2.0; x <= 2.0; x += 1.0) {
-            for (float y = -2.0; y <= 2.0; y += 1.0) {
-              vec2 offset = vec2(x, y) / uResolution * 2.0;
-              vec3 sample_col = texture2D(tDiffuse, uv + offset).rgb;
-              float brightness = dot(sample_col, vec3(0.2126, 0.7152, 0.0722));
-              float contribution = max(0.0, brightness - uBloomThreshold);
-              bloom += sample_col * contribution;
-              total += 1.0;
-            }
-          }
-          bloom /= total;
-          color.rgb += bloom * uBloomIntensity;
-
           // --- Contrast ---
           color.rgb = (color.rgb - 0.5) * uContrast + 0.5;
 
           // --- Saturation ---
           float gray = dot(color.rgb, vec3(0.2126, 0.7152, 0.0722));
           color.rgb = mix(vec3(gray), color.rgb, uSaturation);
-
-          // --- Warmth (shift towards warm tones) ---
-          color.r += uWarmth;
-          color.b -= uWarmth * 0.5;
 
           // --- Vignette ---
           vec2 vignetteUv = uv - 0.5;
