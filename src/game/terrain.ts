@@ -44,10 +44,15 @@ export interface TerrainData {
   terrainGroup: THREE.Group;
 }
 
-// Build the terrain. World XZ spans [-MAP_SIZE/2, +MAP_SIZE/2].
+// Build the terrain. World XZ spans [-MAP_SIZE/2, +MAP_SIZE/2] for the
+// playable area, but the terrain mesh extends further (MAP_SIZE * 1.7)
+// so that mountains placed outside the playable area have ground beneath them.
 export function buildTerrain(scene: THREE.Scene, seed = 1337): TerrainData {
   const segs = MAP_TILES; // segments per side (verts = segs+1)
-  const geo = new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE, segs, segs);
+  // Extended terrain size — larger than the playable MAP_SIZE so mountains
+  // at radius 0.72 have terrain under them instead of floating over sky.
+  const terrainSize = MAP_SIZE * 1.7; // 612 units (playable is 360)
+  const geo = new THREE.PlaneGeometry(terrainSize, terrainSize, segs, segs);
   geo.rotateX(-Math.PI / 2); // lay flat on XZ
 
   // Heights: 1 vertex per (segs+1)^2
@@ -60,6 +65,10 @@ export function buildTerrain(scene: THREE.Scene, seed = 1337): TerrainData {
   const baseSeed = seed;
 
   // Generate heights via fbm + a couple of broad hills for variety
+  // u,v are 0..1 across the EXTENDED terrain. The playable area is the
+  // inner portion (roughly 0.15..0.85 in u,v). The outer ring (0..0.15
+  // and 0.85..1) is where mountains sit — we raise it for a natural
+  // mountain base.
   for (let zi = 0; zi <= segs; zi++) {
     for (let xi = 0; xi <= segs; xi++) {
       const i = zi * (segs + 1) + xi;
@@ -76,7 +85,7 @@ export function buildTerrain(scene: THREE.Scene, seed = 1337): TerrainData {
       const m1 = Math.max(0, 1 - Math.hypot(dx1, dy1) * 3) * heightScale * 0.8;
       const m2 = Math.max(0, 1 - Math.hypot(dx2, dy2) * 3.2) * heightScale * 0.7;
       h += m1 + m2;
-      // Riverbed: carve a snaking low strip down the middle
+      // Riverbed: carve a snaking low strip down the middle (only in playable area)
       const riverX = 0.5 + 0.18 * Math.sin(v * Math.PI * 2.3);
       const riverDist = Math.abs(u - riverX);
       const river = Math.max(0, 1 - riverDist * 30) * -heightScale * 0.5;
@@ -90,6 +99,20 @@ export function buildTerrain(scene: THREE.Scene, seed = 1337): TerrainData {
       h = h * (1 - flatten * 0.85);
       // Slightly above water at spawn areas
       if (flatten > 0.6) h = Math.max(h, waterLevel + 0.5);
+
+      // --- Raise the outer ring for mountain bases ---
+      // The playable area is ~0.15..0.85 in u,v. The outer ring (beyond
+      // that) is where mountains sit — raise it so mountains have ground
+      // beneath them instead of floating.
+      const edgeDist = Math.min(u, v, 1 - u, 1 - v); // 0 at edge, 0.5 at center
+      const playableEdge = 0.15; // playable area boundary in u,v space
+      if (edgeDist < playableEdge) {
+        const edgeFactor = (playableEdge - edgeDist) / playableEdge; // 0..1, 1 at very edge
+        // Raise terrain with noise for natural mountain foothills
+        const foothillNoise = fbm2(nx * 1.5, ny * 1.5, baseSeed + 500, 4);
+        h += edgeFactor * edgeFactor * (35 + foothillNoise * 25);
+      }
+
       heights[i] = h;
     }
   }
@@ -189,7 +212,7 @@ export function buildTerrain(scene: THREE.Scene, seed = 1337): TerrainData {
   scene.add(mesh);
 
   // Water plane at y = waterLevel
-  const waterGeo = new THREE.PlaneGeometry(MAP_SIZE * 1.1, MAP_SIZE * 1.1);
+  const waterGeo = new THREE.PlaneGeometry(terrainSize, terrainSize);
   waterGeo.rotateX(-Math.PI / 2);
   const waterMat = new THREE.MeshPhysicalMaterial({
     color: 0x2c5a7c,
@@ -208,11 +231,13 @@ export function buildTerrain(scene: THREE.Scene, seed = 1337): TerrainData {
 
   // Helper: getHeightAt(worldX, worldZ) — bilinear sample
   // MUST be defined before the skirt code below (which calls it).
-  const half = MAP_SIZE / 2;
-  const cellSize = MAP_SIZE / segs;
+  // Uses terrainSize (extended), not MAP_SIZE, so the outer ring also
+  // returns correct heights.
+  const half = terrainSize / 2;
+  const cellSize = terrainSize / segs;
   function getHeightAt(x: number, z: number): number {
-    const u = (x + half) / MAP_SIZE;
-    const v = (z + half) / MAP_SIZE;
+    const u = (x + half) / terrainSize;
+    const v = (z + half) / terrainSize;
     if (u < 0 || u > 1 || v < 0 || v > 1) return 0;
     const fx = u * segs;
     const fz = v * segs;
@@ -248,7 +273,7 @@ export function buildTerrain(scene: THREE.Scene, seed = 1337): TerrainData {
 
   // Sample the terrain edge heights to build the skirt
   const edgeSamples = 64;
-  const halfMap = MAP_SIZE / 2;
+  const halfMap = terrainSize / 2;
 
   // Build 4 skirt walls (N, S, E, W) as custom geometries
   const buildSkirtWall = (side: 'N' | 'S' | 'E' | 'W', wallMat: THREE.Material) => {
@@ -259,10 +284,10 @@ export function buildTerrain(scene: THREE.Scene, seed = 1337): TerrainData {
     for (let i = 0; i <= edgeSamples; i++) {
       const t = i / edgeSamples;
       let x: number, z: number;
-      if (side === 'N') { x = -halfMap + t * MAP_SIZE; z = -halfMap; }
-      else if (side === 'S') { x = -halfMap + t * MAP_SIZE; z = halfMap; }
-      else if (side === 'E') { x = halfMap; z = -halfMap + t * MAP_SIZE; }
-      else { x = -halfMap; z = -halfMap + t * MAP_SIZE; } // W
+      if (side === 'N') { x = -halfMap + t * terrainSize; z = -halfMap; }
+      else if (side === 'S') { x = -halfMap + t * terrainSize; z = halfMap; }
+      else if (side === 'E') { x = halfMap; z = -halfMap + t * terrainSize; }
+      else { x = -halfMap; z = -halfMap + t * terrainSize; } // W
 
       const topY = getHeightAt(x, z);
       // Top vertex
@@ -301,7 +326,7 @@ export function buildTerrain(scene: THREE.Scene, seed = 1337): TerrainData {
 
   // --- Bottom "underground" plane ---
   // A large dark plane below the terrain so you don't see sky through the bottom
-  const bottomGeo = new THREE.PlaneGeometry(MAP_SIZE * 1.2, MAP_SIZE * 1.2);
+  const bottomGeo = new THREE.PlaneGeometry(terrainSize * 1.1, terrainSize * 1.1);
   bottomGeo.rotateX(Math.PI / 2);
   const bottomMat = new THREE.MeshStandardMaterial({
     color: 0x2a1a10, roughness: 1.0,
