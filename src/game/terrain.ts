@@ -396,8 +396,11 @@ export function buildTerrain(scene: THREE.Scene, seed = 1337): TerrainData {
     return m;
   };
 
-  // Mountain ring — grounded so bases are at/below terrain level
-  const mountainRingRadius = MAP_SIZE * 0.52; // overlap with terrain edge
+  // Mountain ring — placed OUTSIDE the playable area so they don't
+  // overlap trees/buildings. The map is MAP_SIZE (360) across, so the
+  // edge is at ±180. Mountains are placed at radius 0.72+ so their
+  // inner edge (center - radius) is well outside the terrain.
+  const mountainRingRadius = MAP_SIZE * 0.72; // ~260 units (outside the 180 terrain edge)
   const mountainCount = 40;
   for (let i = 0; i < mountainCount; i++) {
     const angle = (i / mountainCount) * Math.PI * 2;
@@ -406,10 +409,11 @@ export function buildTerrain(scene: THREE.Scene, seed = 1337): TerrainData {
     const mz = Math.sin(angle) * r;
 
     const isLargePeak = Math.random() > 0.4;
-    const mHeight = isLargePeak ? 90 + Math.random() * 70 : 40 + Math.random() * 40;
-    const mRadius = isLargePeak ? 28 + Math.random() * 22 : 16 + Math.random() * 16;
+    // Tall enough to fill the horizon from far away
+    const mHeight = isLargePeak ? 120 + Math.random() * 80 : 60 + Math.random() * 50;
+    const mRadius = isLargePeak ? 30 + Math.random() * 25 : 18 + Math.random() * 18;
     const detail = isLargePeak ? 5 : 4;
-    const hasSnow = mHeight > 55;
+    const hasSnow = mHeight > 100;
 
     const m = buildMountain(mRadius, mHeight, detail, i * 17.3, hasSnow);
     // Ground: base at y=-10 (below terrain), so cone center = base + height/2
