@@ -1657,20 +1657,21 @@ export class GameEngine {
       format: THREE.RGBAFormat,
     });
 
-    // Post-processing shader: vignette + color grading + bloom + film grain
+    // Post-processing shader: subtle vignette + slight contrast/saturation
+    // + very mild bloom on bright spots only. No warm color shift.
     this.postMaterial = new THREE.ShaderMaterial({
       uniforms: {
         tDiffuse: { value: this.renderTarget.texture },
         uResolution: { value: new THREE.Vector2(w, h) },
         uTime: { value: 0 },
-        uVignette: { value: 0.45 },       // vignette strength
-        uExposure: { value: 1.08 },       // exposure boost
-        uContrast: { value: 1.12 },       // contrast
-        uSaturation: { value: 1.15 },     // saturation boost
-        uWarmth: { value: 0.06 },         // warm color shift
-        uBloomThreshold: { value: 0.65 }, // bloom threshold
-        uBloomIntensity: { value: 0.25 }, // bloom strength
-        uGrain: { value: 0.025 },         // film grain amount
+        uVignette: { value: 0.25 },       // gentle vignette (was 0.45)
+        uExposure: { value: 1.0 },        // no exposure change (was 1.08)
+        uContrast: { value: 1.05 },       // subtle contrast (was 1.12)
+        uSaturation: { value: 1.05 },     // subtle saturation (was 1.15)
+        uWarmth: { value: 0.0 },          // NO warm shift (was 0.06)
+        uBloomThreshold: { value: 0.85 }, // only very bright things bloom (was 0.65)
+        uBloomIntensity: { value: 0.08 }, // very subtle bloom (was 0.25)
+        uGrain: { value: 0.015 },         // less grain (was 0.025)
       },
       vertexShader: `
         varying vec2 vUv;
