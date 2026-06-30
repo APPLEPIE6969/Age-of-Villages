@@ -312,111 +312,114 @@ export function buildTerrain(scene: THREE.Scene, seed = 1337): TerrainData {
   scene.add(bottomMesh);
 
   // --- Distant mountain range ---
-  // A ring of detailed mountains around the map perimeter that fills the horizon
-  // and hides the terrain edge. Uses displaced icosahedron geometry for organic
-  // rocky shapes, with snow caps and layered coloring.
-  const mountainBaseMat = new THREE.MeshStandardMaterial({
-    color: 0x4a5560, roughness: 0.92, metalness: 0.0,
-    flatShading: true, // gives a faceted rocky look
-  });
-  const mountainMidMat = new THREE.MeshStandardMaterial({
-    color: 0x5a6570, roughness: 0.9, flatShading: true,
-  });
-  const mountainDarkMat = new THREE.MeshStandardMaterial({
-    color: 0x3a4550, roughness: 0.95, flatShading: true,
-  });
-  // Snow material for mountain peaks
-  const snowMat = new THREE.MeshStandardMaterial({
-    color: 0xf0f4f8, roughness: 0.6, metalness: 0.0,
+  // Detailed mountains with displaced geometry, vertex-color snow caps,
+  // and proper grounding (base extends below terrain level).
+  const mountainMat = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.92, metalness: 0.0,
     flatShading: true,
   });
 
   /**
-   * Build a detailed mountain using a displaced icosahedron.
-   * The displacement creates organic rocky peaks and ridges.
+   * Build a detailed mountain with vertex colors for snow caps.
+   * The cone is displaced with noise for rocky detail, and vertices
+   * near the top get white (snow) colors while lower vertices get
+   * rocky grey colors. This ensures snow is perfectly aligned because
+   * it's the same geometry, not a separate mesh.
    */
   const buildMountain = (
     radius: number, height: number, detail: number,
-    seed: number, mat: THREE.Material,
+    seed: number, hasSnow: boolean,
   ): THREE.Mesh => {
-    // Start with a cone, then displace vertices for rocky detail
     const geo = new THREE.ConeGeometry(radius, height, 8, detail);
     const pos = geo.attributes.position as THREE.BufferAttribute;
-    // Noise function for displacement
+    const colors = new Float32Array(pos.count * 3);
+
+    // Noise function
     const noise = (x: number, y: number, z: number) => {
       const n = Math.sin(x * 2.1 + seed) * Math.cos(y * 1.7 + seed * 1.3) * Math.sin(z * 2.3 + seed * 0.7);
       const n2 = Math.sin(x * 4.5 + seed * 2) * Math.cos(z * 5.2 + seed * 1.7) * 0.5;
       return n + n2;
     };
+
+    // Color palette
+    const rockDark = [0.22, 0.27, 0.32];
+    const rockMid = [0.32, 0.37, 0.42];
+    const rockLight = [0.42, 0.47, 0.52];
+    const snowColor = [0.94, 0.96, 0.98];
+
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
       const y = pos.getY(i);
       const z = pos.getZ(i);
-      // Displace outward based on noise — more displacement near the top
+
+      // Displace outward for rocky detail
       const heightFactor = (y + height / 2) / height; // 0 at bottom, 1 at top
-      const disp = noise(x, y, z) * (0.15 + heightFactor * 0.3) * radius;
+      const disp = noise(x, y, z) * (0.12 + heightFactor * 0.28) * radius;
       const len = Math.hypot(x, z) || 1;
       const nx = x / len, nz = z / len;
       pos.setX(i, x + nx * disp);
       pos.setZ(i, z + nz * disp);
-      // Slightly rough up the height too
-      pos.setY(i, y + noise(x * 0.5, y * 0.5, z * 0.5) * height * 0.05);
+      pos.setY(i, y + noise(x * 0.5, y * 0.5, z * 0.5) * height * 0.04);
+
+      // Vertex color: snow on top, rock below
+      const snowLine = hasSnow ? 0.55 : 2.0; // if no snow, snowLine is impossibly high
+      if (heightFactor > snowLine) {
+        // Snow — blend based on height and noise for natural snow line
+        const snowBlend = Math.min(1, (heightFactor - snowLine) / 0.3);
+        const noiseVal = noise(x * 0.3, y * 0.3, z * 0.3) * 0.5 + 0.5;
+        const useSnow = snowBlend * noiseVal > 0.4;
+        if (useSnow) {
+          colors[i * 3] = snowColor[0];
+          colors[i * 3 + 1] = snowColor[1];
+          colors[i * 3 + 2] = snowColor[2];
+        } else {
+          colors[i * 3] = rockLight[0];
+          colors[i * 3 + 1] = rockLight[1];
+          colors[i * 3 + 2] = rockLight[2];
+        }
+      } else if (heightFactor > 0.3) {
+        colors[i * 3] = rockMid[0];
+        colors[i * 3 + 1] = rockMid[1];
+        colors[i * 3 + 2] = rockMid[2];
+      } else {
+        colors[i * 3] = rockDark[0];
+        colors[i * 3 + 1] = rockDark[1];
+        colors[i * 3 + 2] = rockDark[2];
+      }
     }
+
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geo.computeVertexNormals();
-    const m = new THREE.Mesh(geo, mat);
+    const m = new THREE.Mesh(geo, mountainMat);
     m.frustumCulled = false;
     return m;
   };
 
-  // Mountain ring — more mountains, closer, taller to fill the horizon
-  const mountainRingRadius = MAP_SIZE * 0.58; // closer than before (was 0.65)
-  const mountainCount = 40; // more mountains (was 24)
+  // Mountain ring — grounded so bases are at/below terrain level
+  const mountainRingRadius = MAP_SIZE * 0.52; // overlap with terrain edge
+  const mountainCount = 40;
   for (let i = 0; i < mountainCount; i++) {
     const angle = (i / mountainCount) * Math.PI * 2;
-    const r = mountainRingRadius + (Math.random() - 0.5) * 40;
+    const r = mountainRingRadius + (Math.random() - 0.5) * 30;
     const mx = Math.cos(angle) * r;
     const mz = Math.sin(angle) * r;
 
-    // Vary mountain sizes — some big peaks, some smaller foothills
     const isLargePeak = Math.random() > 0.4;
-    const mHeight = isLargePeak ? 45 + Math.random() * 40 : 20 + Math.random() * 25;
-    const mRadius = isLargePeak ? 22 + Math.random() * 18 : 12 + Math.random() * 15;
-    const detail = isLargePeak ? 5 : 4; // more subdivisions for large peaks
+    const mHeight = isLargePeak ? 90 + Math.random() * 70 : 40 + Math.random() * 40;
+    const mRadius = isLargePeak ? 28 + Math.random() * 22 : 16 + Math.random() * 16;
+    const detail = isLargePeak ? 5 : 4;
+    const hasSnow = mHeight > 55;
 
-    // Pick material based on height — taller mountains get snow caps
-    let mat: THREE.Material;
-    if (mHeight > 60) mat = mountainDarkMat;
-    else if (mHeight > 35) mat = mountainMidMat;
-    else mat = mountainBaseMat;
-
-    const m = buildMountain(mRadius, mHeight, detail, i * 17.3, mat);
-    m.position.set(mx, mHeight * 0.5 - 8, mz);
+    const m = buildMountain(mRadius, mHeight, detail, i * 17.3, hasSnow);
+    // Ground: base at y=-10 (below terrain), so cone center = base + height/2
+    m.position.set(mx, mHeight * 0.5 - 10, mz);
     m.rotation.y = Math.random() * Math.PI * 2;
     m.castShadow = false;
     m.receiveShadow = false;
     scene.add(m);
 
-    // Add snow cap on tall mountains
-    if (mHeight > 55) {
-      const snowRadius = mRadius * 0.4;
-      const snowHeight = mHeight * 0.25;
-      const snowGeo = new THREE.ConeGeometry(snowRadius, snowHeight, 7, 2);
-      // Displace snow slightly for natural look
-      const spos = snowGeo.attributes.position as THREE.BufferAttribute;
-      for (let j = 0; j < spos.count; j++) {
-        const sx = spos.getX(j), sz = spos.getZ(j);
-        spos.setX(j, sx + Math.sin(sx * 3 + i) * 0.3);
-        spos.setZ(j, sz + Math.cos(sz * 3 + i) * 0.3);
-      }
-      snowGeo.computeVertexNormals();
-      const snow = new THREE.Mesh(snowGeo, snowMat);
-      snow.position.set(mx, mHeight - snowHeight * 0.5 - 8, mz);
-      snow.rotation.y = m.rotation.y;
-      snow.frustumCulled = false;
-      scene.add(snow);
-    }
-
-    // Add a smaller secondary peak next to large mountains (cluster effect)
+    // Secondary peak
     if (isLargePeak && Math.random() > 0.5) {
       const sAngle = angle + (Math.random() - 0.5) * 0.15;
       const sR = r + (Math.random() - 0.5) * 15;
@@ -424,9 +427,8 @@ export function buildTerrain(scene: THREE.Scene, seed = 1337): TerrainData {
       const sz = Math.sin(sAngle) * sR;
       const sHeight = mHeight * (0.5 + Math.random() * 0.3);
       const sRadius = mRadius * 0.7;
-      const sMat = i % 2 === 0 ? mountainMidMat : mountainBaseMat;
-      const sM = buildMountain(sRadius, sHeight, 4, i * 23.7 + 5, sMat);
-      sM.position.set(sx, sHeight * 0.5 - 8, sz);
+      const sM = buildMountain(sRadius, sHeight, 4, i * 23.7 + 5, sHeight > 55);
+      sM.position.set(sx, sHeight * 0.5 - 10, sz);
       sM.rotation.y = Math.random() * Math.PI * 2;
       sM.frustumCulled = false;
       scene.add(sM);
@@ -434,7 +436,6 @@ export function buildTerrain(scene: THREE.Scene, seed = 1337): TerrainData {
   }
 
   // --- Foreground hills ---
-  // Smaller rolling hills just outside the terrain edge to blend the transition
   const hillMat = new THREE.MeshStandardMaterial({
     color: 0x3a5a3a, roughness: 0.95, flatShading: true,
   });
@@ -443,21 +444,20 @@ export function buildTerrain(scene: THREE.Scene, seed = 1337): TerrainData {
   });
   for (let i = 0; i < 32; i++) {
     const angle = (i / 32) * Math.PI * 2 + Math.random() * 0.1;
-    const r = MAP_SIZE * 0.52 + Math.random() * 15;
+    const r = MAP_SIZE * 0.51 + Math.random() * 12;
     const hx = Math.cos(angle) * r;
     const hz = Math.sin(angle) * r;
     const hHeight = 8 + Math.random() * 12;
     const hRadius = 10 + Math.random() * 8;
-    // Use icosahedron for lumpy hill shape
     const hGeo = new THREE.IcosahedronGeometry(hRadius, 1);
-    // Flatten the hill vertically
     const hpos = hGeo.attributes.position as THREE.BufferAttribute;
     for (let j = 0; j < hpos.count; j++) {
       hpos.setY(j, hpos.getY(j) * 0.4);
     }
     hGeo.computeVertexNormals();
     const hill = new THREE.Mesh(hGeo, i % 2 === 0 ? hillMat : hillMat2);
-    hill.position.set(hx, hHeight * 0.3 - 3, hz);
+    // Ground hills at base level too
+    hill.position.set(hx, hHeight * 0.3 - 5, hz);
     hill.rotation.y = Math.random() * Math.PI * 2;
     hill.castShadow = false;
     hill.receiveShadow = false;

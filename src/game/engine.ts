@@ -1632,9 +1632,156 @@ export class GameEngine {
       this.updateHoverTooltipPosition();
     }
     this.cameraRig.tick(dt);
-    // Render selection box overlay (drawn by React HUD via DOM, not here)
-    this.renderer.render(this.scene, this.camera);
+    // Render the scene to a render target, then apply post-processing
+    this.renderWithPostFX();
   };
+
+  // --- Cinematic post-processing ---
+  private postScene: THREE.Scene | null = null;
+  private postCamera: THREE.OrthographicCamera | null = null;
+  private postMaterial: THREE.ShaderMaterial | null = null;
+  private renderTarget: THREE.WebGLRenderTarget | null = null;
+  private postFXInitialized = false;
+
+  private initPostFX() {
+    if (this.postFXInitialized) return;
+    this.postFXInitialized = true;
+
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+
+    // Render target for the scene
+    this.renderTarget = new THREE.WebGLRenderTarget(w, h, {
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      format: THREE.RGBAFormat,
+    });
+
+    // Post-processing shader: vignette + color grading + bloom + film grain
+    this.postMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        tDiffuse: { value: this.renderTarget.texture },
+        uResolution: { value: new THREE.Vector2(w, h) },
+        uTime: { value: 0 },
+        uVignette: { value: 0.45 },       // vignette strength
+        uExposure: { value: 1.08 },       // exposure boost
+        uContrast: { value: 1.12 },       // contrast
+        uSaturation: { value: 1.15 },     // saturation boost
+        uWarmth: { value: 0.06 },         // warm color shift
+        uBloomThreshold: { value: 0.65 }, // bloom threshold
+        uBloomIntensity: { value: 0.25 }, // bloom strength
+        uGrain: { value: 0.025 },         // film grain amount
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = vec4(position.xy, 0.0, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform vec2 uResolution;
+        uniform float uTime;
+        uniform float uVignette;
+        uniform float uExposure;
+        uniform float uContrast;
+        uniform float uSaturation;
+        uniform float uWarmth;
+        uniform float uBloomThreshold;
+        uniform float uBloomIntensity;
+        uniform float uGrain;
+        varying vec2 vUv;
+
+        // Simple hash for film grain
+        float hash(vec2 p) {
+          return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+        }
+
+        void main() {
+          vec2 uv = vUv;
+          vec4 color = texture2D(tDiffuse, uv);
+
+          // --- Exposure ---
+          color.rgb *= uExposure;
+
+          // --- Bloom (cheap: sample at half resolution by offsetting UVs) ---
+          vec3 bloom = vec3(0.0);
+          float total = 0.0;
+          for (float x = -2.0; x <= 2.0; x += 1.0) {
+            for (float y = -2.0; y <= 2.0; y += 1.0) {
+              vec2 offset = vec2(x, y) / uResolution * 2.0;
+              vec3 sample_col = texture2D(tDiffuse, uv + offset).rgb;
+              float brightness = dot(sample_col, vec3(0.2126, 0.7152, 0.0722));
+              float contribution = max(0.0, brightness - uBloomThreshold);
+              bloom += sample_col * contribution;
+              total += 1.0;
+            }
+          }
+          bloom /= total;
+          color.rgb += bloom * uBloomIntensity;
+
+          // --- Contrast ---
+          color.rgb = (color.rgb - 0.5) * uContrast + 0.5;
+
+          // --- Saturation ---
+          float gray = dot(color.rgb, vec3(0.2126, 0.7152, 0.0722));
+          color.rgb = mix(vec3(gray), color.rgb, uSaturation);
+
+          // --- Warmth (shift towards warm tones) ---
+          color.r += uWarmth;
+          color.b -= uWarmth * 0.5;
+
+          // --- Vignette ---
+          vec2 vignetteUv = uv - 0.5;
+          float dist = length(vignetteUv);
+          float vignette = 1.0 - dist * dist * uVignette;
+          color.rgb *= vignette;
+
+          // --- Film grain ---
+          float grain = (hash(uv * uResolution + uTime) - 0.5) * uGrain;
+          color.rgb += grain;
+
+          // Clamp
+          color.rgb = clamp(color.rgb, 0.0, 1.0);
+
+          gl_FragColor = color;
+        }
+      `,
+      depthTest: false,
+      depthWrite: false,
+    });
+
+    // Fullscreen quad
+    const postGeo = new THREE.PlaneGeometry(2, 2);
+    const postMesh = new THREE.Mesh(postGeo, this.postMaterial);
+    this.postScene = new THREE.Scene();
+    this.postScene.add(postMesh);
+    this.postCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  }
+
+  private renderWithPostFX() {
+    this.initPostFX();
+    if (!this.renderTarget || !this.postScene || !this.postCamera || !this.postMaterial) {
+      this.renderer.render(this.scene, this.camera);
+      return;
+    }
+    // Resize check
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    if (this.renderTarget.width !== w || this.renderTarget.height !== h) {
+      this.renderTarget.setSize(w, h);
+      this.postMaterial.uniforms.uResolution.value.set(w, h);
+    }
+    // Update time
+    this.postMaterial.uniforms.uTime.value = performance.now() * 0.001;
+    // Render scene to target
+    this.renderer.setRenderTarget(this.renderTarget);
+    this.renderer.render(this.scene, this.camera);
+    // Render post-processing to screen
+    this.renderer.setRenderTarget(null);
+    this.renderer.render(this.postScene, this.postCamera);
+  }
 
   // --------------------------------------------------------------------------
   // UNIT UPDATE
