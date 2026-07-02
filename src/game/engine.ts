@@ -17,6 +17,7 @@ import { CameraRig } from './camera';
 import { Pathfinder } from './pathfinding';
 import { pregenerateIcons, disposeIcons, getUnitIcon, getBuildingIcon } from './icons';
 import { createLabelSprite, createTooltipSprite } from './labels';
+import { SoundManager } from './sound';
 import {
   Unit, Building, ResourceNode, Projectile, Player, Team,
 } from './types';
@@ -75,6 +76,9 @@ export class GameEngine {
 
   // Mobile mode (affects label visibility)
   isMobile = false;
+
+  // Sound manager
+  sound = new SoundManager();
 
   // Hover tooltip (desktop only)
   private hoverTooltip: THREE.Sprite | null = null;
@@ -826,6 +830,7 @@ export class GameEngine {
 
   private onMouseDown = (e: MouseEvent) => {
     if (this.gameOver) return;
+    this.sound.init(); // unlock audio on first user gesture
     this.mouseDown = true;
     this.mouseDownButton = e.button;
     this.mouseDownPos = { x: e.clientX, y: e.clientY };
@@ -1225,6 +1230,7 @@ export class GameEngine {
       const u = this.units.get(id);
       if (u) this.setUnitRing(u, true);
     }
+    if (ids.length > 0) this.sound.select();
     this.cb.onSelectionChange?.({ unitIds: ids, buildingId: null });
   }
 
@@ -1242,6 +1248,7 @@ export class GameEngine {
     this.selectedBuildingId = id;
     const b = this.buildings.get(id);
     if (b) this.setBuildingRing(b, true);
+    this.sound.select();
     this.cb.onSelectionChange?.({ unitIds: [], buildingId: id });
   }
 
@@ -1287,6 +1294,7 @@ export class GameEngine {
   private commandMove(target: THREE.Vector3) {
     const units = this.selectedUnitIds.map(id => this.units.get(id)).filter(Boolean) as Unit[];
     if (units.length === 0) return;
+    this.sound.move();
     // Move all to target with simple formation offset
     const formation = this.computeFormation(units.length);
     units.forEach((u, i) => {
@@ -1309,6 +1317,7 @@ export class GameEngine {
   }
 
   private commandAttack(targetId: number) {
+    this.sound.attackCommand();
     for (const id of this.selectedUnitIds) {
       const u = this.units.get(id);
       if (!u) continue;
@@ -1329,6 +1338,7 @@ export class GameEngine {
   private commandGather(resourceId: number) {
     const r = this.resources.get(resourceId);
     if (!r) return;
+    this.sound.gather();
     for (const id of this.selectedUnitIds) {
       const u = this.units.get(id);
       if (!u) continue;
@@ -1512,6 +1522,7 @@ export class GameEngine {
     const stats = BUILDING_STATS[type];
     const player = this.players.player;
     const r = player.resources;
+    this.sound.build();
     r.wood -= stats.cost.wood || 0;
     r.food -= stats.cost.food || 0;
     r.gold -= stats.cost.gold || 0;
@@ -2046,9 +2057,11 @@ export class GameEngine {
       const from = u.pos.clone().add(new THREE.Vector3(0, 1.2, 0));
       const to = target.pos.clone().add(new THREE.Vector3(0, target.__kind === 'building' ? 1.5 : 1.0, 0));
       this.spawnProjectile(from, to, stats.damage, u.team, target.id, target.__kind === 'building' ? false : true, u.type);
+      this.sound.arrow();
     } else {
       // Melee instant damage
       this.applyDamage(u, target, stats.damage);
+      this.sound.meleeHit();
     }
   }
 
@@ -2184,6 +2197,7 @@ export class GameEngine {
   private endGame(winner: Team) {
     if (this.gameOver) return;
     this.gameOver = true;
+    if (winner === 'player') this.sound.victory(); else this.sound.defeat();
     this.cb.onGameOver?.(winner);
   }
 
@@ -2201,6 +2215,7 @@ export class GameEngine {
           b.hp = Math.min(b.maxHp, b.maxHp * (0.1 + 0.9 * b.buildProgress));
           if (b.buildProgress >= 1) {
             b.underConstruction = false;
+            if (b.team === 'player') this.sound.buildingComplete();
             b.hp = b.maxHp;
             const scaffold = b.mesh.getObjectByName('scaffold');
             if (scaffold) scaffold.visible = false;
@@ -2250,6 +2265,7 @@ export class GameEngine {
             spawnPos.y = this.terrain.getHeightAt(spawnPos.x, spawnPos.z);
           }
           const unit = this.createUnit(item.unit, b.team, spawnPos, { skipCostCheck: true });
+          if (b.team === 'player') this.sound.unitTrained();
           if (unit && b.rallyPoint) {
             unit.order = { kind: 'move', target: b.rallyPoint.clone() };
             this.pathTo(unit, b.rallyPoint);
@@ -2575,6 +2591,7 @@ export class GameEngine {
       this.pathTo(u, target!.pos);
     }
     this.cb.onLog?.(`Enemy army (${army.length} units) is attacking your ${BUILDING_STATS[target!.type].label}!`);
+    this.sound.enemyWave();
   }
 
   // --------------------------------------------------------------------------
@@ -2663,6 +2680,7 @@ export class GameEngine {
         player.advancing = null;
         if (team === 'player') {
           this.cb.onLog?.(`Advanced to ${AGE_INFO[player.age].label}!`);
+          this.sound.ageAdvance();
           this.cb.onResourcesChange?.(this.players.player, this.players.enemy);
         }
       }
