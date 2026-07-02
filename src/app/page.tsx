@@ -153,6 +153,7 @@ function Icon({ name, size = 16 }: { name: string; size?: number }) {
 
 export default function Home() {
   const mountRef = useRef<HTMLDivElement>(null);
+  const dragCanvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<GameEngine | null>(null);
   const [selection, setSelection] = useState<SelectionState>({ unitIds: [], buildingId: null });
   const [resources, setResources] = useState<ResourcesState>({
@@ -162,7 +163,6 @@ export default function Home() {
   const [placingBuilding, setPlacingBuilding] = useState<BuildingType | null>(null);
   const [gameOver, setGameOver] = useState<{ winner: 'player' | 'enemy' } | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
-  const [dragBox, setDragBox] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const [selectedBuildingData, setSelectedBuildingData] = useState<{
     type: BuildingType; hp: number; maxHp: number; queue: { unit: UnitType; progress: number }[];
     underConstruction: boolean; buildProgress: number;
@@ -184,6 +184,10 @@ export default function Home() {
       const mobile = window.innerWidth < 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
       setIsMobile(mobile);
       if (engineRef.current) engineRef.current.isMobile = mobile;
+      if (dragCanvasRef.current) {
+        dragCanvasRef.current.width = window.innerWidth;
+        dragCanvasRef.current.height = window.innerHeight;
+      }
     };
     check();
     window.addEventListener('resize', check);
@@ -290,9 +294,6 @@ export default function Home() {
       }
       // Refresh minimap (re-render)
       setMinimapTick(t => (t + 1) % 1000000);
-      // Refresh drag box visual
-      const db = e.getDragBox();
-      setDragBox(db);
       // Resources update (for resource growth display)
       const p = e.getPlayer();
       const en = e.getEnemy();
@@ -324,8 +325,37 @@ export default function Home() {
     };
     window.addEventListener('keydown', onKey);
 
+    // Drag-box overlay: dedicated rAF loop at 60fps, completely separate
+    // from React state updates. Zero React re-renders.
+    let rafId = 0;
+    const drawDragBox = () => {
+      const e = engineRef.current;
+      const canvas = dragCanvasRef.current;
+      if (e && canvas) {
+        const ctx = canvas.getContext('2d')!;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const db = e.getDragBox();
+        if (db) {
+          const x = Math.min(db.x0, db.x1);
+          const y = Math.min(db.y0, db.y1);
+          const w = Math.abs(db.x1 - db.x0);
+          const h = Math.abs(db.y1 - db.y0);
+          if (w > 3 && h > 3) {
+            ctx.fillStyle = 'rgba(80, 255, 80, 0.12)';
+            ctx.fillRect(x, y, w, h);
+            ctx.strokeStyle = 'rgba(136, 255, 136, 0.9)';
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(x, y, w, h);
+          }
+        }
+      }
+      rafId = requestAnimationFrame(drawDragBox);
+    };
+    rafId = requestAnimationFrame(drawDragBox);
+
     return () => {
       clearInterval(interval);
+      cancelAnimationFrame(rafId);
       window.removeEventListener('keydown', onKey);
       engine.dispose();
       engineRef.current = null;
@@ -518,30 +548,6 @@ export default function Home() {
     );
   };
 
-  // Drag box overlay
-  const renderDragBox = () => {
-    if (!dragBox) return null;
-    const x = Math.min(dragBox.x0, dragBox.x1);
-    const y = Math.min(dragBox.y0, dragBox.y1);
-    const w = Math.abs(dragBox.x1 - dragBox.x0);
-    const h = Math.abs(dragBox.y1 - dragBox.y0);
-    if (w < 5 && h < 5) return null;
-    return (
-      <div
-        style={{
-          position: 'fixed',
-          left: x,
-          top: y,
-          width: w,
-          height: h,
-          border: '1.5px solid #88ff88',
-          background: 'rgba(80, 255, 80, 0.12)',
-          pointerEvents: 'none',
-          zIndex: 50,
-        }}
-      />
-    );
-  };
 
   const ageIdxNext = AGE_ORDER.indexOf(resources.age) + 1;
   const canAdvance = ageIdxNext < AGE_ORDER.length;
@@ -553,8 +559,13 @@ export default function Home() {
       {/* 3D canvas mount */}
       <div ref={mountRef} style={{ position: 'absolute', inset: 0 }} />
 
-      {/* Drag box */}
-      {renderDragBox()}
+      {/* Drag selection box — canvas overlay drawn via rAF (no React state) */}
+      <canvas
+        ref={dragCanvasRef}
+        width={1920}
+        height={1080}
+        style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 50 }}
+      />
 
       {/* === TOP BAR: Resources (responsive) === */}
       <div style={{
